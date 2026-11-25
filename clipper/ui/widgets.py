@@ -1,6 +1,5 @@
 import tkinter as tk 
 from clipper.ui.theme import *
-from clipper.ui.theme import *
 
 class Tip:
     """A single, delayed tooltip whose callbacks are cleaned up with its widget."""

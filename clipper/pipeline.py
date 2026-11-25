@@ -767,7 +767,14 @@ class Pipeline:
         rw, rh = map(int, c["aspect"].split(":"))
         W = c["out_width"] // 2 * 2; H = round(W * rh / rw / 2) * 2
         have_nv = "h264_nvenc" in sh(["ffmpeg", "-hide_banner", "-encoders"])[1]
+        if have_nv:  # one tiny test encode, so a broken GPU encoder fails once instead of once per clip
+            rc, _ = self.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.2",
+                              "-pix_fmt", "yuv420p", "-c:v", "h264_nvenc", "-f", "null", "-"])
+            if rc != 0:
+                have_nv = False
+                self.log("The GPU encoder (NVENC) isn't usable here, so the CPU encoder is used.")
         order = {"auto": ["nvenc", "x264"] if have_nv else ["x264"], "nvenc": ["nvenc", "x264"], "x264": ["x264"]}[c["encoder"]]
+        if not have_nv: order = [e for e in order if e != "nvenc"] or ["x264"]
         q = str(c["quality"])
         codecs = {"nvenc": ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", q, "-b:v", "0"],
                   "x264": ["-c:v", "libx264", "-preset", "veryfast", "-crf", q]}

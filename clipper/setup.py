@@ -11,7 +11,7 @@ from pathlib import Path
 from clipper.sysutil import VERSION, WIN, APP_BIN, FROZEN, PYLIBS, proc_kw, py_exe, refresh_paths, which
 def sh(cmd, timeout=None):
     # Resolve commands through the refreshed PATH. The first launch of a program on Windows can be slow (virus scan).
-    timeout = timeout or (20 if WIN else 6)
+    timeout = timeout or 20
     if cmd:
         resolved = which(cmd[0])
         if not resolved: return 1, ""
@@ -547,15 +547,4 @@ SUGGESTED = {
     "qwen3:8b": (5.2, "Strong, but it thinks before answering, so it can be slower."),
     "gemma3:12b": (8.1, "Higher quality. Needs about 8 GB of VRAM or more."),
 }
-
-if any(a in sys.argv for a in ("--version", "-V")):
-    print(f"Clipper {VERSION}")
-    sys.exit(0)
-
-if any(a in sys.argv for a in ("--check", "--install", "--script", "--models")):
-    if "--models" in sys.argv:
-        cli_models(sys.argv)
-    else:
-        cli(sys.argv)
-    sys.exit(0)
 
