@@ -8,7 +8,7 @@
 import ctypes, importlib, importlib.metadata, importlib.util, io, json, os, platform, re, shlex, shutil, subprocess, sys, tempfile, threading, time, zipfile
 import urllib.error, urllib.request
 from pathlib import Path
-from clipper.sysutil import VERSION, WIN, APP_BIN, proc_kw, py_exe, refresh_paths, which
+from clipper.sysutil import VERSION, WIN, APP_BIN, FROZEN, PYLIBS, proc_kw, py_exe, refresh_paths, which
 def sh(cmd, timeout=None):
     # Resolve commands through the refreshed PATH. The first launch of a program on Windows can be slow (virus scan).
     timeout = timeout or (20 if WIN else 6)
@@ -163,6 +163,8 @@ def check_all(nvidia):
 
 def pip_argv(pkgs, upgrade=False, break_sys=True):
     args = [py_exe(), "-m", "pip", "install"] + (["--upgrade"] if upgrade else [])
+    if FROZEN:  # no Python on this machine: the exe runs pip itself and installs into its own folder
+        return args + ["--target", str(PYLIBS)] + list(pkgs)
     if sys.prefix == sys.base_prefix:
         args += ["--user"]
         if break_sys and not WIN:

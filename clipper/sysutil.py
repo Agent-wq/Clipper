@@ -9,6 +9,11 @@ NOWIN = subprocess.CREATE_NO_WINDOW if WIN else 0  # keeps black console windows
 def local_appdata():
     return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
 
+FROZEN = bool(getattr(sys, "frozen", False))  # True inside the PyInstaller exe / binary
+# Frozen builds install extras (CUDA libraries, yt-dlp updates, YouTube upload packages) here with "pip install --target".
+PYLIBS = (local_appdata() / "Clipper" / "pylibs") if WIN else (Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "Clipper" / "pylibs")
+UPDATABLE = ("yt_dlp", "yt_dlp_ejs")  # bundled packages that a newer copy in PYLIBS may replace
+
 APP_BIN = local_appdata() / "Clipper" / "bin"  # Windows: programs the Setup page downloads directly (ffmpeg, deno) live here
 DEFAULT_FONT = "Arial" if WIN else "Sans"      # caption font that every system has
 MONO = "Consolas" if WIN else "Monospace"
@@ -93,8 +98,20 @@ def windows_extra_dirs():
     except OSError: pass
     return dirs
 
+class _PylibsFirst:
+    """PyInstaller's importer beats sys.path, so a newer yt-dlp installed into PYLIBS would be ignored.
+    This finder runs first and hands the UPDATABLE packages to the normal path finder when a copy exists in PYLIBS."""
+    @staticmethod
+    def find_spec(name, path=None, target=None):
+        if name.split(".")[0] not in UPDATABLE: return None
+        import importlib.machinery
+        return importlib.machinery.PathFinder.find_spec(name, path or [str(PYLIBS)], target)
+
 def refresh_paths():  # expose freshly installed user-level programs and Python packages
     import site
+    if FROZEN and PYLIBS.is_dir():
+        if str(PYLIBS) not in sys.path: sys.path.append(str(PYLIBS))
+        if not any(f is _PylibsFirst for f in sys.meta_path): sys.meta_path.insert(0, _PylibsFirst)
     try:
         us = site.getusersitepackages()
         if os.path.isdir(us) and us not in sys.path:
