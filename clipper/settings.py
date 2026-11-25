@@ -13,6 +13,7 @@ SCHEMA = {
     "Source": [
         Opt("max_height", "Max download quality (p)", "choice", 1080, [360, 480, 720, 1080, 1440, 2160], "Lower is a faster download"),
         Opt("use_cache", "Reuse earlier download and transcript", "bool", True, hint="Skips work already done for the same video"),
+        Opt("cache_days", "Delete cached videos unused for (days)", "int", 14, (0, 365), "Old downloads and transcripts are removed when a job starts. 0 keeps everything", True),
         Opt("cookies_browser", "Browser cookies for yt-dlp", "choice", "none", ["none", "firefox", "chrome", "chromium", "brave", "edge"], "Try this if YouTube blocks the download" + (". On Windows Firefox is the most reliable: Chrome and Edge often can't share their cookies" if WIN else ""), True),
         Opt("ytdlp_extra", "Extra yt-dlp arguments", "str", "", hint="For example: --proxy http://host:port", adv=True),
     ],

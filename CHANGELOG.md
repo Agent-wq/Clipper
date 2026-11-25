@@ -1,4 +1,6 @@
 # Changelog
+## 1.1.0
+- Added: old cached downloads and transcripts are removed automatically after 14 days unused (setting: "Delete cached videos unused for", 0 turns it off)
 
 ## 1.0.1
 - Fixed: ffmpeg capability checks no longer time out after 6 s on Linux

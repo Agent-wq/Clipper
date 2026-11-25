@@ -57,7 +57,17 @@ class Pipeline:
         self.proc.wait(); rc = self.proc.returncode; self.proc = None
         self.check()
         return rc, out
-
+    def prune_cache(self, cache, keep):
+        """Delete cache folders not used for cache_days days. Never touches the current one or anything that isn't a cache folder."""
+        days = int(self.c["cache_days"])
+        if days <= 0 or not cache.is_dir(): return
+        cutoff, removed = time.time() - days * 86400, 0
+        for d in cache.iterdir():
+            try:
+                if d == keep or not d.is_dir() or not re.fullmatch(r"[0-9a-f]{10}", d.name) or d.stat().st_mtime >= cutoff: continue
+                shutil.rmtree(d); removed += 1
+            except OSError: pass
+        if removed: self.log(f"Removed {removed} old cache folder(s) (unused for {days}+ days).")
     def duration(self, path):
         ffprobe = which("ffprobe")
         if not ffprobe:
@@ -109,6 +119,9 @@ class Pipeline:
         # Quality is part of the key so changing it re-downloads instead of reusing the old file.
         key = hashlib.sha1(f"{source_identity}|q{c['max_height']}".encode()).hexdigest()[:10]
         work = root / ".cache" / key; work.mkdir(parents=True, exist_ok=True)
+        try: os.utime(work)  # mark as used now, so pruning counts days since the last use
+        except OSError: pass
+        self.prune_cache(root / ".cache", work)
 
         self.step(1, STEPS[0])
         if is_url:
