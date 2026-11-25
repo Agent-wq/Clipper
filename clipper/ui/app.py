@@ -33,8 +33,8 @@ class App(tk.Tk):
         for seq in ("<Button-4>", "<Button-5>", "<MouseWheel>"): self.bind_all(seq, self.wheel)
         self.bind_all("<Control-o>", self.main_key(self.browse))
         self.bind_all("<Control-Return>", self.main_key(self.start))
-    def stop_confirm(self):
-        if self.running and messagebox.askyesno("Clipper", "Cancel the running job?", parent=self): self.stop()
+        def stop_confirm(self):
+            if self.running and messagebox.askyesno("Clipper", "Cancel the running job?", parent=self): self.stop()
         self.bind_all("<Escape>", self.main_key(lambda: self.stop() if self.running else None))
         self.bind_all("<Control-1>", self.main_key(lambda: self.show_page("Progress")))
         for idx, page_name in enumerate(SCHEMA, 2):
