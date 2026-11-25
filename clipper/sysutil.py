@@ -14,6 +14,14 @@ FROZEN = bool(getattr(sys, "frozen", False))  # True inside the PyInstaller exe 
 PYLIBS = (local_appdata() / "Clipper" / "pylibs") if WIN else (Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "Clipper" / "pylibs")
 UPDATABLE = ("yt_dlp", "yt_dlp_ejs")  # bundled packages that a newer copy in PYLIBS may replace
 
+if FROZEN and not WIN:
+    # PyInstaller points LD_LIBRARY_PATH at its unpacked folder, which holds its own (older) libstdc++, libssl, libz...
+    # Programs started from here (ffmpeg, ffprobe, deno, ollama) would load those instead of the system's and fail.
+    # This process has already captured what it needs, so restoring the original value only changes its children.
+    _orig_ld = os.environ.pop("LD_LIBRARY_PATH_ORIG", None)
+    if _orig_ld is not None: os.environ["LD_LIBRARY_PATH"] = _orig_ld
+    else: os.environ.pop("LD_LIBRARY_PATH", None)
+
 APP_BIN = local_appdata() / "Clipper" / "bin"  # Windows: programs the Setup page downloads directly (ffmpeg, deno) live here
 DEFAULT_FONT = "Arial" if WIN else "Sans"      # caption font that every system has
 MONO = "Consolas" if WIN else "Monospace"
