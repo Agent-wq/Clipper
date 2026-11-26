@@ -316,6 +316,17 @@ def youtube_fields(title, description, keywords, src):
         if t and t.lower() not in {x.lower() for x in tags} and size + len(t) + 1 <= 450: tags.append(t); size += len(t) + 1
     return {"title": re.sub(r"\s+", " ", str(title)).strip()[:100], "description": desc, "tags": tags}
 
+RATING_NAMES = {"s_hook": "hook", "s_payoff": "payoff", "s_alone": "stands alone", "s_emotion": "emotion", "s_share": "shareability"}
+
+def describe_score(cl):
+    """Short text for the Review window: the clip's score, why it was picked and the AI's ratings. '' when the clip has no score."""
+    score = cl.get("score")
+    if score is None: return ""
+    out = [f"Score {score}/10" + (": " + ", ".join(cl["why"]) if cl.get("why") else "")]
+    ratings = cl.get("ratings") or {}
+    if ratings: out.append("AI ratings: " + " · ".join(f"{RATING_NAMES.get(k, k)} {v:g}" for k, v in ratings.items()))
+    return "\n".join(out)
+
 def post_text(cl, yt):
     out = [f"TITLE\n{cl['title']}", f"CAPTION (Instagram Reels / TikTok)\n{cl['description']}",
            f"YOUTUBE SHORTS\nTitle: {yt['title']}\nTags: {', '.join(yt['tags'])}\nDescription:\n{yt['description']}"]

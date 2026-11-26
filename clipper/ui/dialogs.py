@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from clipper.sysutil import which, quiet_kw, proc_kw
 from clipper.settings import fmt_clip_t, parse_t, validate_clip_times
-from clipper.moments import layout_sizes, region_px, exclude_cam, fmt_region, youtube_fields
+from clipper.moments import layout_sizes, region_px, exclude_cam, fmt_region, youtube_fields, describe_score
 from clipper.edit import split_filter
 from clipper.ui.theme import *
 from clipper.ui.widgets import Btn
@@ -17,8 +17,8 @@ class Review(tk.Toplevel):
         ttk.Label(left, text="Pick the clips to render", font=(FAM, 11, "bold")).pack(anchor="w", pady=(0, 4))
         self.count_var = tk.StringVar()
         ttk.Label(left, textvariable=self.count_var, style="Muted.TLabel").pack(anchor="w", pady=(0, 8))
-        self.tree = ttk.Treeview(left, columns=("use", "start", "end", "length", "title"), show="headings", height=15, selectmode="browse")
-        for col, w, t in (("use", 42, "Use"), ("start", 72, "Start"), ("end", 72, "End"), ("length", 62, "Length"), ("title", 220, "Title")):
+        self.tree = ttk.Treeview(left, columns=("use", "start", "end", "length", "score", "title"), show="headings", height=15, selectmode="browse")
+        for col, w, t in (("use", 42, "Use"), ("start", 72, "Start"), ("end", 72, "End"), ("length", 62, "Length"), ("score", 56, "Score"), ("title", 220, "Title")):
             self.tree.heading(col, text=t); self.tree.column(col, width=w, stretch=(col == "title"))
         self.tree.pack(fill="y", expand=True); self.tree.bind("<<TreeviewSelect>>", self.pick)
         self.tree.bind("<Double-1>", self.toggle_selected)
@@ -30,7 +30,9 @@ class Review(tk.Toplevel):
         ttk.Label(right, text="Times accept seconds (90) or m:ss (1:30).", style="Muted.TLabel").grid(row=4, column=1, sticky="w")
         ttk.Label(right, text="Instagram description").grid(row=5, column=0, columnspan=2, sticky="w", pady=(10, 2))
         self.d = tk.Text(right, height=9, bg=FIELD, fg=FG, relief="flat", wrap="word", insertbackground=FG, highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACC, padx=8, pady=6, font=(FAM, 10)); self.d.grid(row=6, column=0, columnspan=2, sticky="nsew"); right.rowconfigure(6, weight=1)
-        bar = ttk.Frame(right); bar.grid(row=7, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        self.why = tk.StringVar()
+        tk.Label(right, textvariable=self.why, bg=BG, fg=MUTED, font=(FAM, 9), justify="left", anchor="w", wraplength=480).grid(row=7, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        bar = ttk.Frame(right); bar.grid(row=8, column=0, columnspan=2, sticky="e", pady=(12, 0))
         Btn(bar, "Preview", self.preview).pack(side="left", padx=4)
         Btn(bar, "Cancel", self.cancel).pack(side="left", padx=4)
         Btn(bar, "Render selected", self.ok, kind="primary").pack(side="left", padx=4)
@@ -40,7 +42,8 @@ class Review(tk.Toplevel):
 
     def row(self, i):
         c = self.clips[i]
-        return ("yes" if c["use"] else "no", fmt_clip_t(c["start"]), fmt_clip_t(c["end"]), f"{c['end'] - c['start']:.1f}s", c["title"])
+        score = f"{c['score']:.1f}" if c.get("score") is not None else "-"
+        return ("yes" if c["use"] else "no", fmt_clip_t(c["start"]), fmt_clip_t(c["end"]), f"{c['end'] - c['start']:.1f}s", score, c["title"])
 
     def update_count(self):
         selected = sum(bool(c["use"]) for c in self.clips)
@@ -80,6 +83,8 @@ class Review(tk.Toplevel):
         self.cur = int(self.tree.selection()[0]); c = self.clips[self.cur]
         self.use.set(c["use"]); self.s.set(f"{c['start']:.2f}"); self.e.set(f"{c['end']:.2f}"); self.t.set(c["title"])
         self.d.delete("1.0", "end"); self.d.insert("1.0", c["description"]); self.shown = (self.s.get(), self.e.get()); self.update_count()
+        self.why.set(describe_score(c) or "No score: this clip wasn't picked by the smart picker.")
+
     def preview(self):
         if self.cur is None or not self.commit(): return
         c = self.clips[self.cur]

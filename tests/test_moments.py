@@ -5,7 +5,7 @@ import pytest
 from clipper.moments import (
     clean_tags, clean_title, compose_caption, creator_handle, exclude_cam, fallback_meta, hinglish_text,
     hook_score, is_hinglish, layout_sizes, parse_loudness, parse_region, post_text, rank_windows, refine_bounds,
-    region_px, select_candidates, youtube_description, youtube_fields,
+    region_px, select_candidates, youtube_description, youtube_fields, describe_score,
 )
 
 
@@ -202,3 +202,9 @@ def test_refine_bounds_never_runs_into_next_segment():
             {"start": 9.05, "end": 12.0, "text": "c."}]
     _, b = refine_bounds({"i": 0, "j": 1}, segs, 5, 20.0)
     assert b <= 9.05
+
+def test_describe_score():
+    assert describe_score({}) == ""
+    assert describe_score({"score": 6.0}) == "Score 6.0/10"
+    cl = {"score": 7.5, "why": ["strong opening", "asks a question"], "ratings": {"s_hook": 8.0, "s_share": 6.5}}
+    assert describe_score(cl) == "Score 7.5/10: strong opening, asks a question\nAI ratings: hook 8 · shareability 6.5"
