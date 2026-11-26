@@ -1,15 +1,13 @@
 import random, subprocess
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from clipper.sysutil import which, quiet_kw, proc_kw
 from clipper.settings import fmt_clip_t, parse_t, validate_clip_times
-from clipper.moments import layout_sizes, region_px, exclude_cam, fmt_region
+from clipper.moments import layout_sizes, region_px, exclude_cam, fmt_region, youtube_fields
 from clipper.edit import split_filter
 from clipper.ui.theme import *
 from clipper.ui.widgets import Btn
-from tkinter import ttk, messagebox, filedialog
-from clipper.moments import layout_sizes, region_px, exclude_cam, fmt_region, youtube_fields
 class Review(tk.Toplevel):
     def __init__(self, app, clips, video, holder):
         super().__init__(app); self.title("Review and select clips"); self.geometry("1120x700"); self.minsize(900, 580); self.configure(bg=BG)
