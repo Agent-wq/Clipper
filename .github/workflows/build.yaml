@@ -17,6 +17,9 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y python3-tk
       - run: pip install -r requirements-build.txt
+      - run: pip install pytest
+      - name: Tests
+        run: python -m pytest -q
       - name: Check tag matches VERSION
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
