@@ -919,7 +919,7 @@ class Pipeline:
                     m = re.match(r"out_time_us=(\d+)", line)
                     if m: self.prog(min(1, (k - 1 + int(m.group(1)) / 1e6 / length) / len(clips)), f"clip {k} of {len(clips)}")
                 if edited:
-                    cmd = self.edit_cmd(a, length, video, W, H, ass, plan, cdims, sfx, codecs[enc], output_path, wm, layout)
+                    cmd = self.edit_cmd(a, length, video, W, H, ass, plan, cdims, sfx, codecs[enc], output_path, wm, layout, lead)
                 else:
                     cmd = ["ffmpeg", "-n", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-ss", str(a), "-t", str(length), "-i", str(video),
                            "-vf", self.vf(W, H, sub, pre=lead, wm=wm, layout=layout,track=bool(lead)), *codecs[enc], "-pix_fmt", "yuv420p", *audio, "-movflags", "+faststart", *split_args(c["extra_ffmpeg"]), str(output_path)]
