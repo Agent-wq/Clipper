@@ -400,3 +400,34 @@ def build_wm_ass(c, W, H, text):
             "Dialogue: 5,0:00:00.00,9:59:59.00,Wm,,0,0,0,,%s\n"
             % (W, H, font, fs, alpha, alpha, max(1, round(0.8 * k)), align, mh, mh, mv, ass_text(text)))
 
+def track_width(sw, sh, W, H):
+    """Width of the window cut from an sw x sh picture so that it has the shape of the W x H output. Equal to sw when no cut is needed."""
+    return min(sw, max(2, round(sh * W / H / 2) * 2))
+
+def face_path(samples):
+    """Camera path that follows a speaker's face without jitter.
+    samples: (time, face centre as a fraction 0-1 of the picture width, or None when no face was seen), in time order.
+    Returns (start centre, moves) or None when no face was found at all. Each move is (start time, shift as a fraction of the width, seconds).
+    The camera only moves when the face has left a dead zone around it, and one stray detection never moves it."""
+    pts = [(t, cx) for t, cx in samples if cx is not None]
+    if not pts: return None
+    cx = [p[1] for p in pts]
+    sm = [sorted(cx[max(0, i - 2):i + 3])[len(cx[max(0, i - 2):i + 3]) // 2] for i in range(len(cx))]  # median of up to 5 neighbours drops stray detections
+    cam, free, moves = sm[0], 0.0, []
+    for (t, _), c in zip(pts, sm):
+        if t < free or abs(c - cam) <= 0.07: continue
+        d = c - cam; dur = min(1.2, 0.4 + 1.5 * abs(d))
+        moves.append((round(t, 2), round(d, 4), round(dur, 2)))
+        cam, free = c, t + dur
+    return sm[0], moves
+
+def track_crop(path, sw, sh, cw):
+    """ffmpeg crop that cuts a cw x sh window out of the sw x sh picture and slides it along the face path (eased, like the zoom)."""
+    x0, moves = path
+    terms = "".join("%+.1f*(0.5-0.5*cos(PI*clip((t-%.2f)/%.2f,0,1)))" % (d * sw, t0, dur) for t0, d, dur in moves)
+    return "crop=%d:%d:x='clip(%.1f%s,0,%d)':y=0" % (cw, sh, x0 * sw - cw / 2, terms, sw - cw)
+
+def camera_x(path, t):
+    """Camera centre (fraction of the picture width) at time t on a face_path()."""
+    x0, moves = path
+    return x0 + sum(d * (0.5 - 0.5 * math.cos(math.pi * min(1.0, max(0.0, (t - t0) / dur)))) for t0, d, dur in moves)

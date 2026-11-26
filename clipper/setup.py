@@ -125,6 +125,7 @@ DEPS = [
     dict(id="av", name="PyAV", level="required", why="Reads the audio for Whisper. faster-whisper 1.2.x does not work with PyAV 19 yet, so this keeps it below 19.", mods=["av"], pips=["av<19"], updatable=True),
     dict(id="cuda", name="CUDA 12 libraries", level="optional", why="Lets Whisper use an NVIDIA GPU. Restart Clipper after installing. Without this, Whisper falls back to the CPU (slower but works).", mods=["nvidia.cublas", "nvidia.cudnn"],
          pips=["nvidia-cublas-cu12", "nvidia-cudnn-cu12"], only_nvidia=True),
+    dict(id="cv", name="OpenCV", level="optional", why="Finds the speaker's face so the vertical crop can follow it (Video page: Follow the speaker's face).", mods=["cv2"], pips=["opencv-python-headless<5"]),
     dict(id="yt", name="YouTube upload packages", level="optional", why="Lets Clipper upload finished clips to YouTube. Not needed if you upload by hand.", mods=["googleapiclient", "google_auth_oauthlib"],
          pips=["google-api-python-client", "google-auth-oauthlib"]),
 ]

@@ -610,6 +610,7 @@ class App(tk.Tk):
         todo = [d for d in i["rows"] if d["state"] in ("missing", "warn")]
         if not self.get["use_ai"](): todo = [d for d in todo if d["id"] != "ollama"]
         if not self.get["yt_enabled"](): todo = [d for d in todo if d["id"] != "yt"]
+        if not self.get["face_track"](): todo = [d for d in todo if d["id"] != "cv"]
         if not any(d["state"] == "missing" for d in todo): return
         names = "\n".join("   -  " + d["name"] + (" (large download, about 1 GB)" if d["id"] == "cuda" else "") for d in todo)
         if messagebox.askyesno("Clipper setup", "Clipper needs a few things that aren't installed yet:\n\n" + names + "\n\nInstall them now? You can follow the progress on the Setup page.", parent=self):
@@ -625,6 +626,7 @@ class App(tk.Tk):
             todo = [d for d in todo if d["id"] != "ollama"]
         if not self.get["yt_enabled"]():
             todo = [d for d in todo if d["id"] != "yt"]
+        if not self.get["face_track"](): todo = [d for d in todo if d["id"] != "cv"]
         if not todo: self.slog("Everything required by the current settings is installed."); return
         self.copy_text("\n".join(pl["text"] for pl in merge_plans([plan_for(d, i["mgr"], i["gpu"] is not None) for d in todo], i["mgr"])))
     def setup_save_script(self):
@@ -684,6 +686,7 @@ class App(tk.Tk):
             todo = [d for d in todo if d["id"] != "ollama"]
         if not self.get["yt_enabled"]():
             todo = [d for d in todo if d["id"] != "yt"]
+        if not self.get["face_track"](): todo = [d for d in todo if d["id"] != "cv"]
         if not todo: self.slog("Everything required by the current settings is installed."); return
         self.setup_install(todo)
     def setup_whisper(self, name):

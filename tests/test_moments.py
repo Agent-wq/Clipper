@@ -5,7 +5,7 @@ import pytest
 from clipper.moments import (
     clean_tags, clean_title, compose_caption, creator_handle, exclude_cam, fallback_meta, hinglish_text,
     hook_score, is_hinglish, layout_sizes, parse_loudness, parse_region, post_text, rank_windows, refine_bounds,
-    region_px, select_candidates, youtube_description, youtube_fields, describe_score,
+    region_px, select_candidates, youtube_description, youtube_fields, describe_score, face_path,track_crop, track_width, camera_x,
 )
 
 
@@ -208,3 +208,24 @@ def test_describe_score():
     assert describe_score({"score": 6.0}) == "Score 6.0/10"
     cl = {"score": 7.5, "why": ["strong opening", "asks a question"], "ratings": {"s_hook": 8.0, "s_share": 6.5}}
     assert describe_score(cl) == "Score 7.5/10: strong opening, asks a question\nAI ratings: hook 8 · shareability 6.5"
+
+def test_face_path():
+    assert face_path([(0, None), (0.5, None)]) is None
+    x0, moves = face_path([(i * 0.5, 0.5 + (0.01 if i % 2 else -0.01)) for i in range(20)])
+    assert moves == [] and x0 == pytest.approx(0.5, abs=0.02)
+    _, moves = face_path([(i * 0.5, 0.3 if i < 10 else 0.7) for i in range(20)])  # the speaker changes
+    assert len(moves) == 1 and moves[0][0] == 5.0 and moves[0][1] == pytest.approx(0.4)
+    _, moves = face_path([(i * 0.5, 0.9 if i == 5 else 0.5) for i in range(10)])  # one stray detection
+    assert moves == []
+
+
+def test_track_width_and_crop():
+    assert track_width(1920, 1080, 1080, 1920) == 608
+    assert track_width(1080, 1920, 1080, 1920) == 1080
+    assert track_crop((0.5, []), 1920, 1080, 608) == "crop=608:1080:x='clip(656.0,0,1312)':y=0"
+    assert "cos(PI" in track_crop((0.3, [(5.0, 0.4, 1.0)]), 1920, 1080, 608)
+
+def test_camera_x():
+    path = (0.3, [(5.0, 0.4, 1.0)])
+    assert camera_x(path, 0) == pytest.approx(0.3) and camera_x(path, 4.9) == pytest.approx(0.3)
+    assert camera_x(path, 5.5) == pytest.approx(0.5) and camera_x(path, 9) == pytest.approx(0.7)

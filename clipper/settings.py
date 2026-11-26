@@ -91,6 +91,8 @@ SCHEMA = {
     "Video": [
         Opt("fit", "Fit mode", "choice", "blur", ["blur", "crop", "bars", "squish"], "blur: whole video over a blurred copy. crop: fill the frame and cut the sides. bars: black bars. squish: stretch (distorts)"),
         Opt("aspect", "Aspect ratio", "choice", "9:16", ["9:16", "4:5", "1:1", "16:9"]),
+        Opt("face_track", "Follow the speaker's face", "bool", False, hint="Crops a wide video to the vertical shape and keeps the face in view, instead of the Fit mode. Needs OpenCV (Setup page). Not used with split screen"),
+        Opt("face_debug", "Save a face-tracking debug video", "bool", False, hint="Saves face_debug_1.mp4 etc. next to the clips: the original picture with a green box on the face that was found and a blue box for the part that is kept. Use it to check the tracking", adv=True),
         Opt("out_width", "Output width (px)", "int", 1080, (240, 3840), adv=True),
         Opt("blur", "Blur strength", "int", 20, (1, 60), adv=True),
         Opt("encoder", "Video encoder", "choice", "auto", ["auto", "nvenc", "x264"], "auto uses the NVIDIA GPU encoder when available", True),

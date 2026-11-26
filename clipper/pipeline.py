@@ -9,7 +9,7 @@ from clipper.edit import words_ok, fit_filter, split_filter, cap_place, clip_wor
 from clipper.moments import (creator_handle, parse_region, is_hinglish, HINGLISH_PROMPT, hinglish_text,
     hinglish_note, parse_loudness, clip_text, rerank_prompt, parse_rating, rank_windows, select_candidates,
     keyword_idf, refine_bounds, fallback_meta, clean_title, clean_tags, compose_caption, build_wm_ass,
-    region_px, exclude_cam, layout_sizes, youtube_fields, post_text)
+    region_px, exclude_cam, layout_sizes, youtube_fields, post_text, face_path, track_crop, track_width, camera_x)
 class Cancelled(Exception): pass
 class OllamaError(RuntimeError): pass  # a real model error (out of memory, bad request) is not worth retrying
 
@@ -663,11 +663,11 @@ class Pipeline:
     def fit_expr(self, W, H): return fit_filter(self.c, W, H)
     def split_expr(self, W, H, pre, lay): return split_filter(self.c, W, H, pre, lay)
 
-    def vf(self, W, H, sub, pre="", ass=None, wm=None, layout=None):
+    def vf(self, W, H, sub, pre="", ass=None, wm=None, layout=None, track=False):
         c = self.c
         if layout: fit = self.split_expr(W, H, pre, layout)
-        else:
-            fit = self.fit_expr(W, H)
+        else: 
+            fit = f"scale={W}:{H},setsar=1" if track else self.fit_expr(W, H)  # when tracking, `pre` already cuts the right shape
             if pre: fit = pre + "," + fit
         if sub:
             h = c["cap_color"].lstrip("#").upper()
@@ -767,9 +767,75 @@ class Pipeline:
         parts.append("".join(mix) + "amix=inputs=%d:duration=first:normalize=0,alimiter=limit=0.97%s[aout]" % (len(mix), ("," + LOUDNORM) if self.c["loudnorm"] else ""))
         return inputs, ";".join(parts)
 
-    def edit_cmd(self, a, length, video, W, H, ass, plan, dims, sfx, codec, out_path, wm=None, layout=None):
+    def face_samples(self, video, a, length, sd, fps=2.0, w=480, debug=None):
+        """Where the main face is, every 1/fps second of the clip: (time, centre as a fraction of the picture width), or None when no face was seen.
+        Looks at a small grey copy of the video, so it is fast and uses no GPU. debug: a list that receives (grey picture, face box or None) per frame."""
+        import cv2, numpy as np
+        if not hasattr(cv2, "CascadeClassifier"): raise RuntimeError("This OpenCV has no face detector (OpenCV 5 removed it). Install opencv-python-headless<5")
+        h = max(2, round(w * sd[1] / sd[0] / 2) * 2)
+        cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        if cascade.empty(): raise RuntimeError("OpenCV's face model couldn't be loaded")
+        kw = {k: v for k, v in proc_kw().items() if k not in ("encoding", "errors")}  # raw bytes, not text
+        p = self.proc = subprocess.Popen([which("ffmpeg") or "ffmpeg", "-v", "error", "-ss", str(a), "-t", str(length), "-i", str(video),
+                                          "-vf", f"fps={fps},scale={w}:{h},format=gray", "-f", "rawvideo", "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **kw)
+        data = p.stdout.read(); p.wait(); self.proc = None; self.check()
+        n = len(data) // (w * h)
+        if n < 2: raise RuntimeError("couldn't read pictures from the video")
+        frames = np.frombuffer(data, np.uint8)[:n * w * h].reshape(n, h, w)
+        out, prev = [], None
+        for k in range(n):
+            self.check()
+            faces = cascade.detectMultiScale(cv2.equalizeHist(frames[k]), 1.1, 5, minSize=(w // 24, w // 24))
+            cx, box = None, None
+            if len(faces):  # the biggest face, preferring the one near where the face was last seen
+                r = max(faces, key=lambda r: r[2] * r[3] / (0.2 + (abs((r[0] + r[2] / 2) / w - prev) if prev is not None else 0)))
+                cx = (r[0] + r[2] / 2) / w; prev = cx; box = tuple(int(v) for v in r)
+            out.append((k / fps, cx))
+            if debug is not None: debug.append((frames[k], box))
+        return out
+
+    def face_debug_video(self, shots, path, sw, cw, fps, out_file):
+        """Saves what the face tracker saw: green box = the face it found, blue box = the part of the picture that is kept (when there is a path)."""
+        import cv2
+        tmp = Path(tempfile.mkdtemp(prefix="clipper_dbg_"))
+        try:
+            for k, (gray, box) in enumerate(shots):
+                img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR); h, w = gray.shape
+                if path:
+                    ww = round(cw / sw * w); x0 = max(0, min(round(camera_x(path, k / fps) * w - ww / 2), w - ww))
+                    cv2.rectangle(img, (x0, 0), (x0 + ww - 1, h - 1), (255, 128, 0), 3)
+                if box: cv2.rectangle(img, (box[0], box[1]), (box[0] + box[2], box[1] + box[3]), (0, 255, 0), 2)
+                cv2.imwrite(str(tmp / f"{k:05d}.png"), img)
+            rc, _ = self.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(fps), "-i", str(tmp / "%05d.png"), "-r", "10",
+                              "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_file)])
+        finally: shutil.rmtree(tmp, ignore_errors=True)
+        return rc == 0
+
+    def face_lead(self, video, a, length, sd, W, H, debug_file=None):
+        """For one clip: (crop filter that follows the speaker's face, size of the picture it leaves), or None for no tracking."""
+        cw = track_width(sd[0], sd[1], W, H)
+        if cw >= sd[0]: return None  # the video is not wider than the output, nothing to cut
+        shots = [] if debug_file else None
+        try: samples = self.face_samples(video, a, length, sd, debug=shots)
+        except Cancelled: raise
+        except ImportError:
+            self.log("Face tracking needs OpenCV. Install it on the Setup page. Using the normal fit mode."); return None
+        except Exception as e:
+            self.log(f"Face tracking failed ({e}). Using the normal fit mode."); return None
+        path = face_path(samples)
+        if debug_file:
+            self.log("Face positions (second: % from the left): " + "  ".join(f"{t:.1f}s:{cx * 100:.0f}%" if cx is not None else f"{t:.1f}s:-" for t, cx in samples[:40]))
+            try: self.log(f"Face debug video saved: {debug_file}" if self.face_debug_video(shots, path, sd[0], cw, 2.0, debug_file) else "Couldn't save the face debug video.")
+            except Cancelled: raise
+            except Exception as e: self.log(f"Couldn't save the face debug video ({e}).")
+        if not path:
+            self.log("No face found in this clip, so the normal fit mode is used."); return None
+        self.log(f"Face tracking: a face in {sum(cx is not None for _, cx in samples)} of {len(samples)} frames, {len(path[1])} camera move(s).")
+        return track_crop(path, sd[0], sd[1], cw), (cw, sd[1])
+    def edit_cmd(self, a, length, video, W, H, ass, plan, dims, sfx, codec, out_path, wm=None, layout=None,lead=""):
         c = self.c
-        graph = "[0:v]" + self.vf(W, H, None, self.zoom_chain(plan, dims), ass, wm, layout) + "[v]"
+        pre = ",".join(x for x in (lead, self.zoom_chain(plan, dims)) if x)
+        graph = "[0:v]" + self.vf(W, H, None, pre, ass, wm, layout, track=bool(lead)) + "[v]"
         inputs, ag = self.audio_graph(plan, sfx) if sfx else ([], None)
         if ag: graph += ";" + ag
         aud = ["-c:a", "aac", "-b:a", c["audio_bitrate"]] + (["-af", LOUDNORM] if c["loudnorm"] and not ag else [])
@@ -803,7 +869,7 @@ class Pipeline:
             if has_ass: wm = "wm.ass"; (work / wm).write_text(build_wm_ass(c, W, H, self.wm_text), encoding="utf-8")
             else: self.log("This ffmpeg build has no ASS (libass) support, so the watermark is skipped.")
         split = bool(c["split_enabled"] and self.regions)
-        sd = self.dims(video) if split or (edit_on and c["edit_zoom"]) else None
+        sd = self.dims(video) if split or c["face_track"] or (edit_on and c["edit_zoom"]) else None
         layout, ys = None, None
         if split:
             if sd:
@@ -828,6 +894,10 @@ class Pipeline:
         files = []
         for k, cl in enumerate(clips, 1):
             a, b = cl["start"], cl["end"]; length = b - a
+            lead, cdims = "", dims  # lead: crop that follows the face; cdims: picture size the zoom works on
+            if c["face_track"] and not layout and sd:
+                got = self.face_lead(video, a, length, sd, W, H, out / f"face_debug_{k}.mp4" if c["face_debug"] else None)
+                if got: lead, cdims = got[0], (got[1] if edit_on and c["edit_zoom"] else None)
             name = output_stem(out, c.get("prefix", "clip"), k)
             rows = [s for s in segs if s["end"] > a and s["start"] < b]
             sub = None
@@ -849,10 +919,10 @@ class Pipeline:
                     m = re.match(r"out_time_us=(\d+)", line)
                     if m: self.prog(min(1, (k - 1 + int(m.group(1)) / 1e6 / length) / len(clips)), f"clip {k} of {len(clips)}")
                 if edited:
-                    cmd = self.edit_cmd(a, length, video, W, H, ass, plan, dims, sfx, codecs[enc], output_path, wm, layout)
+                    cmd = self.edit_cmd(a, length, video, W, H, ass, plan, cdims, sfx, codecs[enc], output_path, wm, layout)
                 else:
                     cmd = ["ffmpeg", "-n", "-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-ss", str(a), "-t", str(length), "-i", str(video),
-                           "-vf", self.vf(W, H, sub, wm=wm, layout=layout), *codecs[enc], "-pix_fmt", "yuv420p", *audio, "-movflags", "+faststart", *split_args(c["extra_ffmpeg"]), str(output_path)]
+                           "-vf", self.vf(W, H, sub, pre=lead, wm=wm, layout=layout,track=bool(lead)), *codecs[enc], "-pix_fmt", "yuv420p", *audio, "-movflags", "+faststart", *split_args(c["extra_ffmpeg"]), str(output_path)]
                 rc, lines = self.run(cmd, cwd=work, on_line=on)
                 if rc == 0 and output_path.is_file() and output_path.stat().st_size > 0:
                     done = True; break
