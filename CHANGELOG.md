@@ -1,4 +1,8 @@
 # Changelog
+## 1.1.1
+- Internal: removed unused imports, added unit tests and lint checks to the build
+- Changed: program lookup no longer re-reads the PATH before every command
+
 ## 1.1.0
 - Added: old cached downloads and transcripts are removed automatically after 14 days unused (setting: "Delete cached videos unused for", 0 turns it off)
 

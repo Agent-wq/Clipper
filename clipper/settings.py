@@ -1,11 +1,8 @@
 # ───────────────────────────── settings schema ─────────────────────────────
 # One line per setting. The UI, saving, presets and the pipeline all read from this.
 # (key, label, kind, default, options, hint, advanced)
-import glob, hashlib, io, itertools, json, math, os, platform, queue, random, re, shlex, shutil, subprocess, sys, tempfile, threading, time, traceback, unicodedata, zipfile
-from collections import Counter
-from difflib import SequenceMatcher
+import math, os, re
 from pathlib import Path
-import urllib.error, urllib.request
 from clipper.sysutil import WIN, DEFAULT_FONT
 def Opt(key, label, kind, default, opts=None, hint="", adv=False): return (key, label, kind, default, opts, hint, adv)
 

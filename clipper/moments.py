@@ -2,11 +2,8 @@
 # ───────────────────── Hinglish (Hindi written in English letters) ─────────────────────
 # Whisper has no "Hinglish" language. Clipper transcribes it as Hindi, nudges the model to write English letters with a
 # Roman-script prompt, and converts any Devanagari that still comes out. English words come out of Whisper as normal letters.
-import glob, hashlib, io, itertools, json, math, os, platform, queue, random, re, shlex, shutil, subprocess, sys, tempfile, threading, time, traceback, unicodedata, zipfile
+import itertools, math, re
 from collections import Counter
-from difflib import SequenceMatcher
-from pathlib import Path
-import urllib.error, urllib.request
 from clipper.sysutil import DEFAULT_FONT
 from clipper.edit import _num, ass_text
 HINGLISH_NAMES = {"hinglish", "hi-latn", "hi-en", "hi_en", "hindi-english", "hien"}

@@ -1,5 +1,4 @@
-import glob, hashlib, io, itertools, json, math, os, platform, queue, random, re, shlex, shutil, subprocess, sys, tempfile, threading, time, traceback, unicodedata, zipfile
-from collections import Counter
+import hashlib, json, math, os, re, shutil, subprocess, tempfile, threading, time
 from difflib import SequenceMatcher
 from pathlib import Path
 import urllib.error, urllib.request
@@ -36,6 +35,9 @@ class Pipeline:
         refresh_paths()
         if cmd:
             resolved = which(cmd[0])
+            if not resolved:
+                refresh_paths() #a program installed since launch (Setup page) may be visible now
+                resolved = which(cmd[0])
             if not resolved:
                 raise RuntimeError(
                     f"'{cmd[0]}' is not installed or not on PATH. "

@@ -1,9 +1,5 @@
 # ───────────────────────────── auto-edit helpers (pure functions, no UI) ─────────────────────────────
-import glob, hashlib, io, itertools, json, math, os, platform, queue, random, re, shlex, shutil, subprocess, sys, tempfile, threading, time, traceback, unicodedata, zipfile
-from collections import Counter
-from difflib import SequenceMatcher
-from pathlib import Path
-import urllib.error, urllib.request
+import math, re
 from clipper.sysutil import DEFAULT_FONT
 LOUDNORM = "loudnorm=I=-16:TP=-1.5:LRA=11"
 ZOOM_AMP = {"punchy": (0.07, 0.11, 0.16), "subtle": (0.04, 0.06, 0.09)}  # zoom strength 1, 2, 3

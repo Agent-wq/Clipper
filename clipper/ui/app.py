@@ -1,17 +1,15 @@
-import json, os, platform, queue, random, re, shutil, subprocess, sys, threading, time, traceback
+import json, os, platform, queue, re, shutil, subprocess, sys, threading, time, traceback
 import urllib.error, urllib.request, webbrowser
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-from clipper.sysutil import VERSION, WIN, NOWIN, MONO, proc_kw, quiet_kw, kill_tree, which
-from clipper.setup import (sh, system_info, mgr_label, gpu_info, have_mod, check_all, plan_for,
+from clipper.sysutil import VERSION, WIN, NOWIN, MONO, quiet_kw, kill_tree, which
+from clipper.setup import (system_info, mgr_label, gpu_info, have_mod, check_all, plan_for,
     merge_plans, is_admin, elevation, run_plan, setup_script, WHISPER_REPOS, WHISPER_MB,
     whisper_cached, ollama_up, ollama_models, ollama_post, SUGGESTED)
-from clipper.settings import (SCHEMA, PRESETS, STEPS, WEIGHTS, SETTINGS_FILE, cast, parse_t,
-    fmt_t, fmt_clip_t, validate_clip_times)
-from clipper.edit import split_filter
-from clipper.moments import YT_CATEGORIES, exclude_cam, fmt_region, region_px, layout_sizes
+from clipper.settings import (SCHEMA, PRESETS, STEPS, WEIGHTS, SETTINGS_FILE, cast, fmt_t)
+from clipper.moments import YT_CATEGORIES
 from clipper.pipeline import Pipeline, Cancelled
 from clipper.ui.theme import *
 from clipper.ui.widgets import Tip, Btn, Switch, Scrolled, NavItem

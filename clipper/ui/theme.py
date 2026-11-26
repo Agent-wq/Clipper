@@ -2,8 +2,8 @@ import sys
 from clipper.sysutil import WIN
 from clipper.setup import system_info, plan_for, DEPS
 try:
-    import tkinter as tk
-    from tkinter import ttk, filedialog, messagebox
+    import tkinter as tk #noqa: F401
+    from tkinter import ttk, filedialog, messagebox #noqa: F401
     import tkinter.font as tkfont
 except ImportError:
     _n, _m = system_info()
