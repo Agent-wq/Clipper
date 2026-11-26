@@ -10,8 +10,8 @@ jobs:
         os: [windows-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - if: runner.os == 'Linux'
@@ -39,7 +39,7 @@ jobs:
           pyinstaller --onefile --windowed --name Clipper-windowed run.py --noconfirm \
             --collect-all faster_whisper --collect-all ctranslate2 --collect-all onnxruntime --collect-all av \
             --collect-all yt_dlp --collect-all yt_dlp_ejs --collect-all pip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Clipper-${{ runner.os }}
           path: dist/*
@@ -48,11 +48,11 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           generate_release_notes: true
