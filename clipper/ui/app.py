@@ -13,7 +13,7 @@ from clipper.moments import YT_CATEGORIES
 from clipper.pipeline import Pipeline, Cancelled
 from clipper.ui.theme import *
 from clipper.ui.widgets import Tip, Btn, Switch, Scrolled, NavItem
-from clipper.ui.dialogs import Review, RegionPicker
+from clipper.ui.dialogs import Review, RegionPicker, UploadPicker
 class App(tk.Tk):
     def __init__(self):
         super().__init__(); self.title(f"Clipper {VERSION} — Video to Short Clips"); self.geometry("1280x860"); self.minsize(1040, 700)
@@ -26,6 +26,7 @@ class App(tk.Tk):
         self.pages, self.nav, self.chips, self.scroller = {}, {}, [], None
         self.model_cbs, self.pulling, self.pull_cancel, self.job, self.job_busy, self.models_loaded, self.setup_info = [], False, threading.Event(), None, False, False, None
         self.last_files = []  # finished clips (for the YouTube upload button)
+        self.uploaded = set()
         self.asked_setup = False  # the "install what is missing?" question is asked once per launch
         self.style_ui(); self.build(); self.build_menus(); self.load(); self.toggle_adv()
         for seq in ("<Button-4>", "<Button-5>", "<MouseWheel>"): self.bind_all(seq, self.wheel)
@@ -389,18 +390,12 @@ class App(tk.Tk):
         if self.running:
             messagebox.showinfo("Clipper", "Wait for the current job to finish, or cancel it first.", parent=self)
             return
-        files = getattr(self, "last_files", None)
-        if not files:
-            messagebox.showinfo("Clipper", "No clips to upload. Make some clips first.", parent=self)
+        if getattr(self, "yt_cancel", None) and self.yt_stop.disabled is False:
+            messagebox.showinfo("Clipper", "An upload is already running.", parent=self)
             return
-        # Filter to only valid file paths
-        valid = [f for f in files if Path(f["path"] if isinstance(f, dict) else f).is_file()]
-        if not valid:
-            messagebox.showinfo("Clipper", "The clip files were moved or deleted. Render clips first.", parent=self)
-            return
-        if not messagebox.askyesno("Upload to YouTube", f"Upload {len(valid)} clip(s) to YouTube?"):
-            return
-        self.upload_youtube(valid)
+        files = [f for f in (self.last_files or []) if Path(f["path"] if isinstance(f, dict) else f).is_file()]
+        files = [f if isinstance(f, dict) else {"path": str(f), "title": Path(f).stem} for f in files]
+        UploadPicker(self, files, self.uploaded, self.upload_youtube)   
 
     def upload_youtube(self, files):
         """Upload clips to YouTube in a background thread. 'files' is a list of dicts with path/title/description."""
@@ -493,6 +488,7 @@ class App(tk.Tk):
                         vid = response["id"]
                         self.q.put(("log", f"YouTube: uploaded {Path(path).name} → https://www.youtube.com/watch?v={vid}"))
                         uploaded += 1
+                        self.q.put(("yt_uploaded",path))
                     elif response and response.get("error"):
                         self.q.put(("log", f"YouTube: error uploading {Path(path).name}: {response['error'].get('message', '?')}"))
                 except Exception as e:
@@ -509,6 +505,8 @@ class App(tk.Tk):
     def on_yt_done(self):
         self.yt_btn.state(["!disabled"]); self.yt_stop.state(["disabled"])
         self.status.set("Ready.")
+    def on_yt_uploaded(self, path):
+        self.uploaded.add(str(Path(path)))
 
     # ───────── Setup page ─────────
     def section(self, parent, row, title, sub=""):

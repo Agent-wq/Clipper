@@ -8,6 +8,8 @@ from clipper.moments import layout_sizes, region_px, exclude_cam, fmt_region
 from clipper.edit import split_filter
 from clipper.ui.theme import *
 from clipper.ui.widgets import Btn
+from tkinter import ttk, messagebox, filedialog
+from clipper.moments import layout_sizes, region_px, exclude_cam, fmt_region, youtube_fields
 class Review(tk.Toplevel):
     def __init__(self, app, clips, video, holder):
         super().__init__(app); self.title("Review and select clips"); self.geometry("1120x700"); self.minsize(900, 580); self.configure(bg=BG)
@@ -422,4 +424,75 @@ class RegionPicker(tk.Toplevel):
         self.hold["res"] = None
         self.hold["ev"].set()
         self.destroy()
+class UploadPicker(tk.Toplevel):
+    """Choose which finished clips to upload to YouTube. Click the box (or double-click / press Space) to tick a clip."""
+    def __init__(self, app, files, uploaded, on_ok):
+        super().__init__(app); self.title("Upload to YouTube"); self.geometry("820x500"); self.minsize(640, 360); self.configure(bg=BG)
+        self.transient(app); self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self.on_ok, self.uploaded = on_ok, {str(Path(p)) for p in uploaded}
+        self.files, self.checked = [], []
+        tk.Label(self, text="Pick the clips to upload", bg=BG, fg=FG, font=(FAM, 11, "bold")).pack(anchor="w", padx=18, pady=(16, 2))
+        self.count_var = tk.StringVar()
+        tk.Label(self, textvariable=self.count_var, bg=BG, fg=MUTED, font=(FAM, 9)).pack(anchor="w", padx=18, pady=(0, 8))
+        box = tk.Frame(self, bg=BG); box.pack(fill="both", expand=True, padx=18)
+        self.tree = ttk.Treeview(box, columns=("use", "file", "title", "state"), show="headings", selectmode="browse")
+        for col, w, t in (("use", 46, "Upload"), ("file", 170, "File"), ("title", 380, "YouTube title"), ("state", 90, "")):
+            self.tree.heading(col, text=t); self.tree.column(col, width=w, stretch=(col == "title"), anchor="center" if col == "use" else "w")
+        sb = ttk.Scrollbar(box, command=self.tree.yview, style="Vertical.TScrollbar"); self.tree.configure(yscrollcommand=sb.set)
+        self.tree.pack(side="left", fill="both", expand=True); sb.pack(side="left", fill="y")
+        self.tree.bind("<Button-1>", self.click); self.tree.bind("<Double-1>", self.dbl); self.tree.bind("<space>", self.space)
+        bar = tk.Frame(self, bg=BG); bar.pack(fill="x", padx=18, pady=14)
+        Btn(bar, "Select all", lambda: self.set_all(True), small=True).pack(side="left")
+        Btn(bar, "Select none", lambda: self.set_all(False), small=True).pack(side="left", padx=(8, 0))
+        Btn(bar, "Add video file…", self.add_files, small=True).pack(side="left", padx=(8, 0))
+        Btn(bar, "Upload selected", self.ok, kind="primary").pack(side="right")
+        Btn(bar, "Cancel", self.destroy).pack(side="right", padx=(0, 10))
+        for f in files:
+            if Path(f["path"]).is_file(): self.append(f, tick=str(Path(f["path"])) not in self.uploaded)  # clips already uploaded start unticked
+        self.update_count()
+        self.after(80, lambda: (self.lift(), self.focus_force()))
 
+    def row(self, i):
+        f = self.files[i]; p = str(Path(f["path"]))
+        return ("☑" if self.checked[i] else "☐", Path(p).name, f.get("yt_title") or f.get("title") or "", "uploaded" if p in self.uploaded else "")
+
+    def append(self, f, tick=True):
+        if any(str(Path(x["path"])) == str(Path(f["path"])) for x in self.files): return
+        self.files.append(f); self.checked.append(tick)
+        self.tree.insert("", "end", iid=str(len(self.files) - 1), values=self.row(len(self.files) - 1))
+
+    def toggle(self, i):
+        self.checked[i] = not self.checked[i]; self.tree.item(str(i), values=self.row(i)); self.update_count()
+
+    def click(self, e):
+        item = self.tree.identify_row(e.y)
+        if item and self.tree.identify_region(e.x, e.y) == "cell" and self.tree.identify_column(e.x) == "#1":
+            self.toggle(int(item)); return "break"
+    def dbl(self, e):
+        item = self.tree.identify_row(e.y)
+        if item and self.tree.identify_column(e.x) != "#1": self.toggle(int(item))
+    def space(self, _=None):
+        sel = self.tree.selection()
+        if sel: self.toggle(int(sel[0]))
+        return "break"
+
+    def set_all(self, on):
+        self.checked = [on] * len(self.files)
+        for i in range(len(self.files)): self.tree.item(str(i), values=self.row(i))
+        self.update_count()
+
+    def update_count(self):
+        self.count_var.set(f"{sum(self.checked)} of {len(self.files)} selected · click a box, double-click a row, or press Space to tick it")
+
+    def add_files(self):
+        """For clips from an earlier session (or any other video): they get a title from the file name and the #Shorts tag."""
+        for p in filedialog.askopenfilenames(parent=self, filetypes=[("Video", "*.mp4 *.mov *.mkv *.webm"), ("All files", "*.*")]):
+            yt = youtube_fields(Path(p).stem.replace("_", " "), "", [], "")
+            self.append({"path": p, "title": yt["title"], "description": "", "yt_title": yt["title"], "yt_description": yt["description"], "yt_tags": yt["tags"]})
+        self.update_count()
+
+    def ok(self):
+        chosen = [f for f, on in zip(self.files, self.checked) if on]
+        if not chosen:
+            messagebox.showinfo("Clipper", "Tick at least one clip to upload.", parent=self); return
+        self.destroy(); self.on_ok(chosen)
