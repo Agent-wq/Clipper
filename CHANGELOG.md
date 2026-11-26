@@ -1,5 +1,7 @@
 # Changelog
-
+## 2.0.1
+- Added: Working face tracking is added split needs to be turned off for it to work and face tracking needs to be turned on
+  
 ## 1.2.0
 - Changed: Now user is able to upload clips anytime and seperately by selecting which clips to upload
 
