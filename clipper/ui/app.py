@@ -32,9 +32,9 @@ class App(tk.Tk):
         for seq in ("<Button-4>", "<Button-5>", "<MouseWheel>"): self.bind_all(seq, self.wheel)
         self.bind_all("<Control-o>", self.main_key(self.browse))
         self.bind_all("<Control-Return>", self.main_key(self.start))
-        def stop_confirm(self):
+        def esc_stop():
             if self.running and messagebox.askyesno("Clipper", "Cancel the running job?", parent=self): self.stop()
-        self.bind_all("<Escape>", self.main_key(lambda: self.stop() if self.running else None))
+        self.bind_all("<Escape>", self.main_key(esc_stop))
         self.bind_all("<Control-1>", self.main_key(lambda: self.show_page("Progress")))
         for idx, page_name in enumerate(SCHEMA, 2):
             if idx <= 9:
@@ -234,6 +234,12 @@ class App(tk.Tk):
         except (AttributeError, KeyError, tk.TclError): return
         self.scroller.cv.yview_scroll((-1 if (e.num == 4 or getattr(e, "delta", 0) > 0) else 1), "units")
 
+    def font_list(self):
+        """Installed font families, sorted, without Windows' duplicate '@' vertical variants."""
+        if not hasattr(self, "_fonts"):
+            self._fonts = sorted({n for n in tkfont.families(self) if n and not n.startswith("@")}, key=str.lower)
+        return self._fonts
+
     def add_row(self, f, r, key, label, kind, default, opts, hint, adv):
         blk = tk.Frame(f, bg=PANEL); blk.grid(row=r, column=0, sticky="nw", pady=15, padx=(0, 30))
         tk.Label(blk, text=label, bg=PANEL, fg=FG, font=(FAM, 10), anchor="w").pack(anchor="w")
@@ -258,6 +264,8 @@ class App(tk.Tk):
             cb["values"] = list(SUGGESTED)
             self.model_cbs.append(cb)
             Btn(w, "Refresh", lambda cb=cb: self.refresh_models(cb), bg=PANEL, small=True).pack(side="left", padx=(8, 0)); self.get[key], self.set[key] = v.get, v.set
+        elif kind == "font":
+            v = tk.StringVar(value=default); w = ttk.Combobox(f, textvariable=v, values=self.font_list(), width=22); self.get[key], self.set[key] = v.get, v.set
         else:
             v = tk.StringVar(value=default); w = ttk.Entry(f, textvariable=v, width=36); self.get[key], self.set[key] = v.get, v.set
         w.grid(row=r, column=1, sticky="ne" if kind == "text" else "e", pady=12); self.rows.append(([blk, w], adv))

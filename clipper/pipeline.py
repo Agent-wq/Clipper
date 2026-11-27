@@ -5,7 +5,7 @@ import urllib.error, urllib.request
 from clipper.sysutil import WIN, kill_tree, refresh_paths, which, proc_kw, safe_dirname, split_args
 from clipper.setup import ytdlp_cmd, ensure_av_compat, is_av_mismatch, av_mismatch_help, ollama_up, ollama_post, sh
 from clipper.settings import STEPS, transcript_cache_name, fmt_t, output_stem, srt_t
-from clipper.edit import words_ok, fit_filter, split_filter, cap_place, clip_words, plan_prompt, make_plan, LOUDNORM, build_ass
+from clipper.edit import words_ok, fit_filter, split_filter, cap_place, clip_words_edited, caption_chunks, plan_prompt, make_plan, LOUDNORM, build_ass
 from clipper.moments import (creator_handle, parse_region, is_hinglish, HINGLISH_PROMPT, hinglish_text,
     hinglish_note, parse_loudness, clip_text, rerank_prompt, parse_rating, rank_windows, select_candidates,
     keyword_idf, refine_bounds, fallback_meta, clean_title, clean_tags, compose_caption, build_wm_ass,
@@ -181,7 +181,7 @@ class Pipeline:
         if not clips: raise RuntimeError("The AI didn't return usable clips. Try again, or turn off the AI picker.")
         self.prog(1)
         if c["review"]:
-            clips = self.ask_review(clips, video, total)
+            clips = self.ask_review(clips, video, total, segs)
             if not clips: raise RuntimeError("No clips were selected.")
 
         if c["edit_enabled"]:
@@ -645,9 +645,9 @@ class Pipeline:
         self.log(f"AI selection: kept {len(out)} of {len(cands)} candidate(s).")
         return sorted(out, key=lambda x: x["start"])
 
-    def ask_review(self, clips, video, total):
+    def ask_review(self, clips, video, total, segs):
         holder = {"ev": threading.Event(), "res": None,
-                  "duration": total,
+                  "duration": total, "segs": segs,
                   "min_len": self.c["min_len"], "max_len": self.c["max_len"]}
         self.emit("review", clips, str(video), holder)
         while not holder["ev"].wait(0.2):
@@ -673,7 +673,8 @@ class Pipeline:
             h = c["cap_color"].lstrip("#").upper()
             h = h if re.fullmatch(r"[0-9A-F]{6}", h) else "FFFFFF"
             al, mv = cap_place(c, H, layout)
-            fit += (f",subtitles={sub}:force_style='FontSize={c['cap_size']},Alignment={al},Outline={c['cap_outline']},"
+            font = re.sub(r"[,'\r\n]", " ", str(c["edit_font"])).strip() or "Arial"
+            fit += (f",subtitles={sub}:force_style='FontName={font},FontSize={c['cap_size']},Alignment={al},Outline={c['cap_outline']},"
                     f"Bold={int(c['cap_bold'])},MarginV={mv:.0f},PrimaryColour=&H00{h[4:6]}{h[2:4]}{h[0:2]}'")
         if ass: fit += ",ass=" + ass
         if wm: fit += ",ass=" + wm
@@ -687,7 +688,7 @@ class Pipeline:
         for k, cl in enumerate(clips, 1):
             self.check()
             length = cl["end"] - cl["start"]
-            words = clip_words(segs, cl["start"], cl["end"])
+            words = clip_words_edited(segs,cl)
             raw = None
             if ai and words:
                 try: raw = self.ask(plan_prompt(words, length, c["focus"]), f"edit plan {k}/{len(clips)}", key=None)
@@ -900,6 +901,9 @@ class Pipeline:
                 if got: lead, cdims = got[0], (got[1] if edit_on and c["edit_zoom"] else None)
             name = output_stem(out, c.get("prefix", "clip"), k)
             rows = [s for s in segs if s["end"] > a and s["start"] < b]
+            if cl.get("cap_edit"):  # plain captions of an edited clip are rebuilt from the corrected words
+                rows = [{"start": a + ch[0][0], "end": a + ch[-1][1], "text": " ".join(w[2] for w in ch)}
+                        for ch in caption_chunks(clip_words_edited(segs, cl), 8, 42)]
             sub = None
             if c["captions"] and rows:
                 sub = f"sub_{k}.srt"
@@ -907,7 +911,7 @@ class Pipeline:
                 if c["write_srt"]: shutil.copy(work / sub, out / f"{name}.srt")
             plan, ass = (cl.get("edit") if edit_on else None), None
             if plan and ass_ok:
-                text = build_ass(c, W, H, length, clip_words(segs, a, b), plan, ys, layout)
+                text = build_ass(c, W, H, length, clip_words_edited(segs, cl), plan, ys, layout)
                 if text: ass = f"sub_{k}.ass"; (work / ass).write_text(text, encoding="utf-8")
             output_path = out / f"{name}.mp4"
             # edited render first; if it fails on every encoder, fall back to the plain captioned clip

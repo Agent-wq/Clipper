@@ -1,6 +1,14 @@
 # Changelog
+
+## 2.1.0
+- Added: Drop down menu to select fonts which are installed on the system
+- Changed: Instead of black bars in face cam it is now blur
+- Misc: Bunch of other changes and fixes
 ## 2.0.1
 - Added: Working face tracking is added split needs to be turned off for it to work and face tracking needs to be turned on
+
+## 2.0.0
+- Added: Face tracking is added split needs to be turned off for it to work and face tracking needs to be turned on(Doesn't work yet)
   
 ## 1.2.0
 - Changed: Now user is able to upload clips anytime and seperately by selecting which clips to upload
