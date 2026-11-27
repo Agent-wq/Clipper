@@ -2,7 +2,7 @@ import pytest
 
 from clipper.edit import (
     ass_col, ass_t, ass_text, build_ass, cap_place, caption_chunks, clip_words, fit_filter, hexcol, make_plan,
-    overlay_text, split_filter,
+    overlay_text, split_filter, apply_caption_edit, clip_words_edited,
 )
 
 PLAN_CFG = {"edit_style": "punchy", "edit_zoom": True, "edit_pan": True, "edit_text": True}
@@ -147,3 +147,20 @@ def test_build_ass_has_captions_hook_and_bar():
 def test_build_ass_returns_none_when_nothing_to_draw():
     cfg = dict(ASS_CFG, edit_bar=False)
     assert build_ass(cfg, 1080, 1920, 10.0, [], {"hook": None, "zooms": [], "callouts": []}) is None
+
+def test_apply_caption_edit():
+    words = [(0.0, 1.0, "helo"), (1.0, 2.0, "world"), (2.0, 3.0, "again")]
+    assert apply_caption_edit(words, "hello world again") == [(0.0, 1.0, "hello"), (1.0, 2.0, "world"), (2.0, 3.0, "again")]
+    assert [w[2] for w in apply_caption_edit(words, "helo again")] == ["helo", "again"]        # deleted word
+    out = apply_caption_edit(words, "helo big world again")                                      # inserted word
+    assert [w[2] for w in out] == ["helo", "big", "world", "again"]
+    assert all(w[0] < w[1] for w in out)
+    assert apply_caption_edit(words, "") == []
+
+
+def test_clip_words_edited():
+    segs = [{"start": 0, "end": 4, "text": "one two three four"}]
+    cl = {"start": 0, "end": 4}
+    assert clip_words_edited(segs, cl) == clip_words(segs, 0, 4)
+    cl["cap_edit"] = {"text": "one 2 three four", "start": 0, "end": 4}
+    assert [w[2] for w in clip_words_edited(segs, cl)] == ["one", "2", "three", "four"]

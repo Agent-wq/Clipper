@@ -1,6 +1,8 @@
 # ───────────────────────────── auto-edit helpers (pure functions, no UI) ─────────────────────────────
 import math, re
+from difflib import SequenceMatcher
 from clipper.sysutil import DEFAULT_FONT
+
 LOUDNORM = "loudnorm=I=-16:TP=-1.5:LRA=11"
 ZOOM_AMP = {"punchy": (0.07, 0.11, 0.16), "subtle": (0.04, 0.06, 0.09)}  # zoom strength 1, 2, 3
 
@@ -42,6 +44,48 @@ def clip_words(segs, a, b):
             if en <= a or st >= b: continue
             s0 = max(0.0, st - a)
             out.append((s0, max(s0, min(b, en) - a), tx))
+    return sorted(out)
+
+def apply_caption_edit(words, text):
+    """Replace a clip's words with edited text. Words that stayed keep their timing; changed or added words
+    share the time of the words they replace (or the gap they sit in)."""
+    new = str(text).split()
+    if not new or not words: return []
+    norm = lambda s: re.sub(r"[^\w']", "", s.lower())
+    sm = SequenceMatcher(None, [norm(w[2]) for w in words], [norm(x) for x in new], autojunk=False)
+    out = []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "delete": continue
+        if tag == "equal":
+            out += [(words[i1 + k][0], words[i1 + k][1], new[j1 + k]) for k in range(i2 - i1)]
+            continue
+        n = j2 - j1
+        if tag == "replace": t0, t1 = words[i1][0], words[i2 - 1][1]
+        else:
+            t0 = words[i1 - 1][1] if i1 > 0 else words[0][0]
+            t1 = words[i1][0] if i1 < len(words) else words[-1][1]
+        t1 = max(t1, t0 + 0.1 * n)
+        step = (t1 - t0) / n
+        out += [(t0 + k * step, t0 + (k + 1) * step, new[j1 + k]) for k in range(n)]
+    return sorted(out)
+
+def clip_words_edited(segs, cl):
+    """Words of a clip in clip time, with the caption fixes made in the Review window applied."""
+    a, b = cl["start"], cl["end"]
+    plain = clip_words(segs, a, b)
+    ed = cl.get("cap_edit")
+    if not ed: return plain
+    try: ea, eb, text = float(ed["start"]), float(ed["end"]), str(ed["text"])
+    except (KeyError, TypeError, ValueError): return plain
+    base = clip_words(segs, ea, eb)
+    if not base: return plain
+    out, n = [], b - a
+    for s, e, t in apply_caption_edit(base, text):
+        s, e = s + ea - a, e + ea - a
+        if e <= 0 or s >= n: continue
+        s = max(0.0, s)
+        out.append((s, max(s, min(n, e)), t))
+    out += [w for w in plain if not ea <= a + (w[0] + w[1]) / 2 <= eb]  # parts of the clip outside the edited range stay as transcribed
     return sorted(out)
 
 def caption_chunks(words, max_words, max_chars):
@@ -195,16 +239,19 @@ def fit_filter(c, W, H):
     }[c["fit"]]
 
 def split_filter(c, W, H, pre, lay):
-    """Face cam enlarged in its own panel, main content (with the usual fit mode and zoom) in the other."""
+    """Face cam enlarged in its own panel, main content (with the usual fit mode and zoom) in the other.
+    Any space left beside the cam is filled with a blurred copy of the content instead of black bars."""
     cx, cy, cw, ch = lay["cam"]; mx, my, mw, mh = lay["main"]; cam_h = lay["cam_h"]
-    # Preserve the entire user-selected face-cam rectangle even when it is not the
-    # same aspect ratio as the output panel; pad rather than silently cropping it.
-    cam = f"crop={cw}:{ch}:{cx}:{cy},scale={W}:{cam_h}:force_original_aspect_ratio=decrease,pad={W}:{cam_h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
     px, py, pw, ph = lay.get("patch") or (0, 0, 0, 0)  # area of the content that still shows the cam: painted over
     fix = f"delogo=x={px}:y={py}:w={pw}:h={ph}," if lay.get("patch") else ""
-    main = f"crop={mw}:{mh}:{mx}:{my}," + fix + (pre + "," if pre else "") + fit_filter(c, W, H - cam_h)
+    content = f"crop={mw}:{mh}:{mx}:{my}," + fix
+    # The whole user-selected face-cam rectangle is kept (scaled to fit, never cropped).
+    cam_fg = f"crop={cw}:{ch}:{cx}:{cy},scale={W}:{cam_h}:force_original_aspect_ratio=decrease"
+    cam_bg = content + f"scale={W}:{cam_h}:force_original_aspect_ratio=increase,crop={W}:{cam_h},boxblur={c['blur']}:5"
+    main = content + (pre + "," if pre else "") + fit_filter(c, W, H - cam_h)
     stack = "[cam][main]vstack" if lay["top"] else "[main][cam]vstack"
-    return f"split[sc][sm];[sc]{cam}[cam];[sm]{main}[main];{stack},setsar=1"
+    return (f"split=3[sc][sm][sb];[sc]{cam_fg}[fg];[sb]{cam_bg}[bg];"
+            f"[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[cam];[sm]{main}[main];{stack},setsar=1")
 
 def cap_place(c, H, lay=None):
     """(ASS alignment, margin in 288 px units) for captions. In split mode 'bottom' stays on the content panel

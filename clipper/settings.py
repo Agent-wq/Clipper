@@ -69,7 +69,7 @@ SCHEMA = {
         Opt("edit_sfx", "Sound effects", "bool", True, hint="A quiet whoosh on zooms and a pop on text"),
         Opt("edit_hl_color", "Highlight color (hex)", "str", "FFD400", adv=True),
         Opt("edit_upper", "ALL CAPS captions", "bool", True, adv=True),
-        Opt("edit_font", "Caption font", "str", DEFAULT_FONT, hint="Any font installed on this computer", adv=True),
+        Opt("edit_font", "Caption font", "font", DEFAULT_FONT, hint="Any font installed on this computer", adv=True),
     ],
     "Watermark": [
         Opt("wm_enabled", "Credit the original creator", "bool", True, hint="Shows their name on every clip. Local files have no channel, so type the name below"),

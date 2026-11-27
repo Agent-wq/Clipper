@@ -5,13 +5,19 @@ from tkinter import ttk, messagebox, filedialog
 from clipper.sysutil import which, quiet_kw, proc_kw
 from clipper.settings import fmt_clip_t, parse_t, validate_clip_times
 from clipper.moments import layout_sizes, region_px, exclude_cam, fmt_region, youtube_fields, describe_score
-from clipper.edit import split_filter
 from clipper.ui.theme import *
 from clipper.ui.widgets import Btn
+from clipper.edit import split_filter, clip_words
+
 class Review(tk.Toplevel):
+    def transcript(self, a, b):
+        return " ".join(w[2] for w in clip_words(self.segs, a, b))
+
     def __init__(self, app, clips, video, holder):
         super().__init__(app); self.title("Review and select clips"); self.geometry("1120x700"); self.minsize(900, 580); self.configure(bg=BG)
         self.clips, self.video, self.holder, self.cur, self.busy, self.shown = clips, video, holder, None, False, ("", "")
+        self.segs = holder.get("segs") or []
+        self.cap_range, self.cap_orig = (0.0, 0.0), ""
         self.transient(app); self.protocol("WM_DELETE_WINDOW", self.cancel)
         left = ttk.Frame(self, padding=12); left.pack(side="left", fill="y")
         ttk.Label(left, text="Pick the clips to render", font=(FAM, 11, "bold")).pack(anchor="w", pady=(0, 4))
@@ -28,11 +34,15 @@ class Review(tk.Toplevel):
         for r, (lab, var) in enumerate((("Start", self.s), ("End", self.e), ("Title", self.t)), 1):
             ttk.Label(right, text=lab).grid(row=r, column=0, sticky="w", pady=4); ttk.Entry(right, textvariable=var).grid(row=r, column=1, sticky="ew", pady=4)
         ttk.Label(right, text="Times accept seconds (90) or m:ss (1:30).", style="Muted.TLabel").grid(row=4, column=1, sticky="w")
+
         ttk.Label(right, text="Instagram description").grid(row=5, column=0, columnspan=2, sticky="w", pady=(10, 2))
-        self.d = tk.Text(right, height=9, bg=FIELD, fg=FG, relief="flat", wrap="word", insertbackground=FG, highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACC, padx=8, pady=6, font=(FAM, 10)); self.d.grid(row=6, column=0, columnspan=2, sticky="nsew"); right.rowconfigure(6, weight=1)
+        self.d = tk.Text(right, height=5, bg=FIELD, fg=FG, relief="flat", wrap="word", insertbackground=FG, highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACC, padx=8, pady=6, font=(FAM, 10)); self.d.grid(row=6, column=0, columnspan=2, sticky="nsew"); right.rowconfigure(6, weight=1)
+        ttk.Label(right, text="Caption text (fix mistakes here, word timing is kept)").grid(row=7, column=0, columnspan=2, sticky="w", pady=(10, 2))
+        self.cap = tk.Text(right, height=8, bg=FIELD, fg=FG, relief="flat", wrap="word", insertbackground=FG, highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACC, padx=8, pady=6, font=(FAM, 10)); self.cap.grid(row=8, column=0, columnspan=2, sticky="nsew"); right.rowconfigure(8, weight=2)
         self.why = tk.StringVar()
-        tk.Label(right, textvariable=self.why, bg=BG, fg=MUTED, font=(FAM, 9), justify="left", anchor="w", wraplength=480).grid(row=7, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        bar = ttk.Frame(right); bar.grid(row=8, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        tk.Label(right, textvariable=self.why, bg=BG, fg=MUTED, font=(FAM, 9), justify="left", anchor="w", wraplength=480).grid(row=9, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        bar = ttk.Frame(right); bar.grid(row=10, column=0, columnspan=2, sticky="e", pady=(12, 0))
+
         Btn(bar, "Preview", self.preview).pack(side="left", padx=4)
         Btn(bar, "Cancel", self.cancel).pack(side="left", padx=4)
         Btn(bar, "Render selected", self.ok, kind="primary").pack(side="left", padx=4)
@@ -76,6 +86,9 @@ class Review(tk.Toplevel):
                 messagebox.showerror("Invalid clip times", str(exc) or "Use seconds (90) or m:ss (1:30).", parent=self)
                 return False
         c.update(start=a, end=b, title=self.t.get().strip(), description=self.d.get("1.0", "end").strip(), use=self.use.get())
+        txt = " ".join(self.cap.get("1.0", "end").split())
+        if txt == self.cap_orig: c.pop("cap_edit", None)
+        else: c["cap_edit"] = {"text": txt, "start": self.cap_range[0], "end": self.cap_range[1]}
         self.tree.item(str(self.cur), values=self.row(self.cur)); self.update_count(); return True
     def pick(self, _=None):
         if self.busy or not self.tree.selection(): return
@@ -83,6 +96,10 @@ class Review(tk.Toplevel):
         self.cur = int(self.tree.selection()[0]); c = self.clips[self.cur]
         self.use.set(c["use"]); self.s.set(f"{c['start']:.2f}"); self.e.set(f"{c['end']:.2f}"); self.t.set(c["title"])
         self.d.delete("1.0", "end"); self.d.insert("1.0", c["description"]); self.shown = (self.s.get(), self.e.get()); self.update_count()
+        ed = c.get("cap_edit")
+        self.cap_range = (ed["start"], ed["end"]) if ed else (c["start"], c["end"])
+        self.cap_orig = self.transcript(*self.cap_range)
+        self.cap.delete("1.0", "end"); self.cap.insert("1.0", ed["text"] if ed else self.cap_orig)
         self.why.set(describe_score(c) or "No score: this clip wasn't picked by the smart picker.")
 
     def preview(self):
