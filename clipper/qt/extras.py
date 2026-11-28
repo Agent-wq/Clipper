@@ -26,7 +26,7 @@ class Extras:
         QTimer.singleShot(600, self.setup_check)
 
     def page_shown(self, name):
-        if name == "AI picker" and not self.models_loaded:
+        if name == "Picking" and not self.models_loaded:
             self.models_loaded = True; self.refresh_models(quiet=True)
 
     # ───────── small UI helpers ─────────
@@ -135,7 +135,7 @@ class Extras:
         if i["up"]: st, det = "ok", f"Running at {i['host']}" + (f"  ·  {len(i['models'])} model(s) installed" if i["models"] is not None else "")
         elif have: st, det = "warn", "Installed but not running"; b.append(("Start", self.setup_start_ollama))
         else: st, det = "missing", "Not installed"
-        b.append(("Manage models", lambda: self.show_page("AI picker")))
+        b.append(("Manage models", lambda: self.show_page("Picking")))
         self.status_row(self.svc_box, st, "Ollama service", "Optional; needed only when the AI picker is enabled.", det, b)
         self._clear(self.wh_box)
         for n in WHISPER_REPOS:
@@ -361,7 +361,8 @@ class Extras:
 
     def upload_youtube(self, files):
         """Upload clips in a background thread. 'files' is a list of dicts with path/title/description."""
-        c = self.cfg()
+        try: c = self.cfg()
+        except ValueError as e: self.on_log("Error: " + str(e)); return
         if not have_mod("googleapiclient") or not have_mod("google_auth_oauthlib"):
             self.on_log("YouTube upload: packages not installed. Go to Setup to install them."); return
         cs_path = Path(c["yt_client_secret"]).expanduser()
@@ -371,7 +372,7 @@ class Extras:
         privacy, hashtags_in_title = c["yt_privacy"], c["yt_hashtags_in_title"]
         default_tags = [t.strip() for t in c["yt_default_tags"].split(",") if t.strip()]
         cancel_ev = threading.Event(); self.yt_cancel = cancel_ev; self.yt_running = True
-        self.yt_btn.setEnabled(False); self.yt_stop.setEnabled(True)
+        self.yt_btn.setEnabled(False); self.yt_stop.setEnabled(True); self.yt_stop.show()
         self.status.setText(f"Uploading {len(files)} clip(s) to YouTube...")
         def run():
             try:
@@ -443,7 +444,7 @@ class Extras:
         self.yt_stop.setEnabled(False); self.on_log("YouTube upload: stopping after the current chunk...")
 
     def on_yt_done(self):
-        self.yt_running = False; self.yt_btn.setEnabled(True); self.yt_stop.setEnabled(False); self.status.setText("Ready.")
+        self.yt_running = False; self.yt_btn.setEnabled(True); self.yt_stop.setEnabled(False); self.yt_stop.hide(); self.status.setText("Ready.")
 
     def on_yt_uploaded(self, path):
         self.uploaded.add(str(Path(path)))

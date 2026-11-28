@@ -155,6 +155,11 @@ class ReviewDialog(_Holder):
     def accept(self):
         if self.commit(): self._finish(self.clips); super().accept()
 
+    def reject(self):
+        if not getattr(self, "_done", False) and QMessageBox.question(
+                self, "Clipper", "Cancel this job? Nothing will be rendered.") != QMessageBox.Yes: return
+        super().reject()
+
 
 # ───────────────────────── Face cam / content picker ─────────────────────────
 class RegionCanvas(QWidget):
@@ -407,7 +412,7 @@ class UploadDialog(QDialog):
         self.update_count()
         self.table.itemChanged.connect(lambda _it: None if self._loading else self.update_count())
         self.table.cellDoubleClicked.connect(lambda row, col: self.toggle(row) if col != 0 else None)
-        QShortcut(QKeySequence(Qt.Key_Space), self.table, activated=self.space, context=Qt.WidgetShortcut)
+        QShortcut(QKeySequence("Space"), self.table, activated=self.space, context=Qt.WidgetShortcut)
         self.finished.connect(self.deleteLater)
 
     def append(self, f, tick=True):

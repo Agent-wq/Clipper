@@ -2,7 +2,7 @@
 import ctypes, glob, importlib, importlib.util, os, shlex, shutil, subprocess, sys, sysconfig, unicodedata
 from pathlib import Path
 
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 WIN = os.name == "nt"
 NOWIN = subprocess.CREATE_NO_WINDOW if WIN else 0  # keeps black console windows from flashing up on Windows
 

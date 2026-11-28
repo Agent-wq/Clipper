@@ -75,6 +75,11 @@ QTableWidget { background: $FIELD; border: 1px solid $BORDER; border-radius: 8px
 QTableWidget::item { padding: 6px 8px; border: none; }
 QTableWidget::item:selected { background: #2a2a2a; color: $FG; }
 QHeaderView::section { background: $SIDE; color: $MUTED; border: none; padding: 8px 9px; font-weight: 700; font-size: 9pt; }
+QLabel:disabled { color: #4a4a4a; }
+QLineEdit:disabled, QPlainTextEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled { color: #555555; background: $PANEL; }
+QListWidget { background: $PANEL; border: 1px solid $BORDER; border-radius: 12px; outline: 0; padding: 6px; }
+QListWidget::item { padding: 10px 12px; border-radius: 8px; }
+QListWidget::item:hover, QListWidget::item:selected { background: $HOVER; color: $FG; }
 """).substitute(COLORS)
 
 
