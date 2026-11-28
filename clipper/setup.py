@@ -1,10 +1,10 @@
 # ───────────────────── system checks and installers (standard library only) ─────────────────────
 # Kept free of tkinter and third-party imports so they also work on a brand-new machine:
-#   python clipper_gui.py --version    print the version
-#   python clipper_gui.py --check      show what is installed
-#   python3 clipper_gui.py --models     list installed Ollama models (and test the connection)
-#   python3 clipper_gui.py --install    install everything that is missing
-#   python3 clipper_gui.py --script     print a setup script for this kind of system
+#   python run.py --version    print the version
+#   python run.py --check      show what is installed
+#   python3 run.py --models     list installed Ollama models (and test the connection)
+#   python3 run.py --install    install everything that is missing
+#   python3 run.py --script     print a setup script for this kind of system
 import ctypes, importlib, importlib.metadata, importlib.util, io, json, os, platform, re, shlex, shutil, subprocess, sys, tempfile, threading, time, zipfile
 import urllib.error, urllib.request
 from pathlib import Path
@@ -111,9 +111,7 @@ def ytdlp_cmd():
 
 # winget ids and direct-download names are used on Windows; pkgs/manual are used on Linux.
 DEPS = [
-    dict(id="tk", name="tkinter", level="required", why="Draws this window.", mods=["tkinter"],
-         pkgs={"pacman": ["tk"], "apt": ["python3-tk"], "dnf": ["python3-tkinter"], },
-         manual_win="Run the Python installer again, choose Modify, and tick 'tcl/tk and IDLE'.", win_url="https://www.python.org/downloads/windows/"),
+    dict(id="qt", name="PySide6 (Qt)", level="required", why="Draws this window.", mods=["PySide6"], pips=["PySide6-Essentials"]),
     dict(id="ffmpeg", name="ffmpeg", level="required", why="Cuts, crops and encodes the clips. Includes ffprobe and ffplay.", bins=["ffmpeg", "ffprobe"], vflag="-version",
          pkgs={"pacman": ["ffmpeg"], "apt": ["ffmpeg"], "dnf": ["ffmpeg"]}, winget="Gyan.FFmpeg", direct="ffmpeg", win_url="https://www.gyan.dev/ffmpeg/builds/"),
     dict(id="ytdlp", name="yt-dlp", level="required", why="Downloads videos from links. Update it when downloads start failing.", bins=["yt-dlp"], mods=["yt_dlp"], pips=["yt-dlp[default]"], updatable=True),
@@ -409,7 +407,7 @@ def setup_script(mgr):
     lines += ["# Optional: NVIDIA GPU acceleration for Whisper", "# python3 -m pip install --user --break-system-packages nvidia-cublas-cu12 nvidia-cudnn-cu12", ""]
     if mgr == "pacman":
         lines += ["# Optional: NVIDIA-accelerated Ollama", "# sudo pacman -S --needed ollama-cuda", ""]
-    lines += ["echo 'Done. Start Clipper with: python3 clipper_gui.py'"]
+    lines += ["echo 'Done. Start Clipper with: python3 run.py'"]
     return "\n".join(lines) + "\n"
 
 def setup_script_windows(mgr):
@@ -429,7 +427,7 @@ def setup_script_windows(mgr):
     lines += ["# Python packages", pip(pips), ""]
     lines += ["# Optional: YouTube upload integration", "# " + pip(["google-api-python-client", "google-auth-oauthlib"]), ""]
     lines += ["# Optional: NVIDIA GPU acceleration for Whisper", "# " + pip(["nvidia-cublas-cu12", "nvidia-cudnn-cu12"]), ""]
-    lines += ['Write-Host "Done. Start Clipper with: py clipper_gui.py"']
+    lines += ['Write-Host "Done. Start Clipper with: py run.py"']
     return "\r\n".join(lines) + "\r\n"
 
 def cli(argv):
@@ -442,7 +440,7 @@ def cli(argv):
     if "--script" in argv: print("\n" + setup_script(mgr)); return
     if not todo: print("\nEverything is installed."); return
     plans = [plan_for(r, mgr, nv is not None) for r in todo]
-    me = "py clipper_gui.py" if WIN else "python3 clipper_gui.py"
+    me = "py run.py" if WIN else "python3 run.py"
     if "--install" not in argv:
         print(f"\nTo install what is missing, run:  {me} --install\nOr by hand:")
         for r, pl in zip(todo, plans): print(f"  {r['name']}: {pl['text']}")
@@ -455,8 +453,8 @@ def cli(argv):
         print(); ok = run_plan(pl, print, esc or [], {}); print("OK" if ok else "FAILED")
 
 def cli_models(argv):
-    """List installed Ollama models and test the connection. Usage: python clipper_gui.py --models"""
-    # Allow the user to override the host: python clipper_gui.py --models http://127.0.0.1:11434
+    """List installed Ollama models and test the connection. Usage: python run.py --models"""
+    # Allow the user to override the host: python run.py --models http://127.0.0.1:11434
     host = "http://127.0.0.1:11434"
     for a in argv[1:]:
         if a.startswith("http"): host = a
