@@ -29,4 +29,12 @@ def test_main_window_builds():
     app = QApplication.instance() or QApplication([])
     theme.apply(app)
     win = MainWindow()
-    assert {"Progress", "Setup", "AI picker", "YouTube"} <= set(win.pages)
+    assert {"Progress", "Setup", "Search", "Input", "Picking", "Look", "Layout", "Output"} <= set(win.pages)
+    win.on_search("caption font")
+    assert win.results.count() >= 1
+
+def test_every_settings_section_is_on_a_page():
+    pytest.importorskip("PySide6.QtWidgets")
+    from clipper.settings import SCHEMA
+    from clipper.qt.app import GROUPS
+    assert sorted(s for _, sections in GROUPS.values() for s in sections) == sorted(SCHEMA)

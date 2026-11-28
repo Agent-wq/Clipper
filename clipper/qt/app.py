@@ -1,9 +1,10 @@
 import html, json, os, shutil, subprocess, sys, threading, time, traceback
 from pathlib import Path
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QFontDatabase, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-                               QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+                               QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea,
+                               QStackedWidget, QVBoxLayout, QWidget)
 from clipper.sysutil import VERSION, WIN, which
 from clipper.setup import SUGGESTED
 from clipper.settings import PRESETS, SCHEMA, SETTINGS_FILE, STEPS, WEIGHTS, cast, fmt_t
@@ -14,6 +15,16 @@ from clipper.qt.widgets import Combo, DSpin, Spin, Switch
 from clipper.qt.dialogs import RegionDialog, ReviewDialog
 from clipper.qt.extras import Extras
 
+GATES = {"AI picker": "use_ai", "Captions": "captions", "Editing": "edit_enabled", "Watermark": "wm_enabled",
+         "Split screen": "split_enabled", "YouTube": "yt_enabled"}
+
+GROUPS = {
+    "Input": ("Where the video comes from and how its speech is read.", ["Source", "Transcribe"]),
+    "Picking": ("How moments are chosen, and how many clips you get.", ["AI picker", "Growth", "Clips"]),
+    "Look": ("Captions, auto-editing and the creator credit.", ["Captions", "Editing", "Watermark"]),
+    "Layout": ("The shape of the finished clips and the split-screen layout.", ["Split screen", "Video"]),
+    "Output": ("Where files are saved, and uploading to YouTube.", ["Output", "YouTube"]),
+}
 
 class Bridge(QObject):
     """Carries events from the worker thread to the UI thread."""
@@ -25,7 +36,9 @@ class MainWindow(Extras, QMainWindow):
         super().__init__()
         self.setWindowTitle(f"Clipper {VERSION} — Video to Short Clips")
         self.resize(1280, 860); self.setMinimumSize(1040, 700)
-        self.get, self.set, self.rows, self.pages, self.nav, self.chips = {}, {}, [], {}, {}, []
+        self.setAcceptDrops(True)
+        self.get, self.set, self.rows, self.pages, self.nav, self.chips, self.ctl = {}, {}, [], {}, {}, [], {}
+        self.index, self.cur_page = [], "Progress"
         self.cancel_ev, self.pipe, self.running, self.last_files, self.t_step = threading.Event(), None, False, [], time.time()
         self.fonts = sorted({f for f in QFontDatabase.families() if f and not f.startswith("@")}, key=str.lower)
         self.bridge = Bridge(); self.bridge.event.connect(self.dispatch)
@@ -35,6 +48,7 @@ class MainWindow(Extras, QMainWindow):
         QShortcut(QKeySequence("Ctrl+O"), self, activated=self.browse)
         QShortcut(QKeySequence("Ctrl+Return"), self, activated=self.start)
         QShortcut(QKeySequence("Esc"), self, activated=self.esc_stop)
+        QShortcut(QKeySequence("Ctrl+F"), self, activated=lambda: self.search.setFocus())
 
     # ───────── layout ─────────
     def build(self):
@@ -48,6 +62,9 @@ class MainWindow(Extras, QMainWindow):
         brand = QLabel("CLIPPER"); brand.setObjectName("brand"); brand.setIndent(22)
         sub = QLabel("VIDEO WORKSPACE"); sub.setObjectName("section"); sub.setIndent(22); sub.setContentsMargins(0, 4, 0, 18)
         v.addWidget(brand); v.addWidget(sub)
+        self.search = QLineEdit(); self.search.setPlaceholderText("Search settings"); self.search.setClearButtonEnabled(True)
+        self.search.setToolTip("Ctrl+F"); self.search.textChanged.connect(self.on_search); self.search.returnPressed.connect(self.search_first)
+        sbox = QWidget(); sl = QVBoxLayout(sbox); sl.setContentsMargins(16, 0, 16, 10); sl.addWidget(self.search); v.addWidget(sbox)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         body = QWidget(); nv = QVBoxLayout(body); nv.setContentsMargins(0, 0, 0, 0); nv.setSpacing(0)
@@ -61,7 +78,7 @@ class MainWindow(Extras, QMainWindow):
         def label(text):
             l = QLabel(text); l.setObjectName("section"); l.setIndent(22); l.setContentsMargins(0, 18, 0, 8); nv.addWidget(l)
         nav("Progress"); label("WORKSPACE SETTINGS")
-        for name in SCHEMA: nav(name)
+        for name in GROUPS: nav(name)
         label("TOOLS"); nav("Setup")
         nv.addStretch(1)
         scroll.setWidget(body); v.addWidget(scroll, 1)
@@ -80,6 +97,7 @@ class MainWindow(Extras, QMainWindow):
         top = QHBoxLayout(); top.setSpacing(10)
         self.url = QLineEdit(); self.url.setPlaceholderText("Paste a video URL or select a local video file")
         self.url.setMinimumHeight(44); self.url.returnPressed.connect(self.start)
+        self.url.setAcceptDrops(False)
         b_file = QPushButton("Choose file"); b_file.clicked.connect(self.browse)
         self.go_btn = QPushButton("Make clips"); self.go_btn.setObjectName("primary"); self.go_btn.clicked.connect(self.start)
         self.stop_btn = QPushButton("Cancel"); self.stop_btn.setEnabled(False); self.stop_btn.clicked.connect(self.stop)
@@ -89,7 +107,8 @@ class MainWindow(Extras, QMainWindow):
         self.stack = QStackedWidget()
         v.addLayout(top); v.addWidget(self.stack, 1)
         self.build_progress()
-        for name, items in SCHEMA.items(): self.build_page(name, items)
+        for page, (sub, sections) in GROUPS.items(): self.build_group(page, sub, sections)
+        self.build_search_page()
         self.build_setup()
         return main
 
@@ -100,16 +119,61 @@ class MainWindow(Extras, QMainWindow):
         lay.addWidget(t); lay.addWidget(s); lay.addSpacing(4)
         sc.setWidget(body); return sc, lay
 
-    def build_page(self, name, items):
-        sc, lay = self.make_page(name, SUBTITLES.get(name, ""))
-        card = QFrame(); card.setObjectName("card")
-        cl = QVBoxLayout(card); cl.setContentsMargins(24, 4, 24, 4); cl.setSpacing(0)
-        for i, it in enumerate(items): cl.addWidget(self.add_row(i, *it))
-        lay.addWidget(card)
-        if name == "AI picker": lay.addWidget(self.build_models_card())
-        if name == "YouTube": lay.addWidget(self.build_yt_card())
+    def build_group(self, page, sub, sections):
+        sc, lay = self.make_page(page, sub)
+        for name in sections:
+            head = QLabel(name); head.setStyleSheet("font-size:13pt;font-weight:700;"); head.setContentsMargins(0, 10, 0, 0); lay.addWidget(head)
+            if SUBTITLES.get(name):
+                h = QLabel(SUBTITLES[name]); h.setObjectName("hint"); h.setWordWrap(True); lay.addWidget(h)
+            card = QFrame(); card.setObjectName("card")
+            cl = QVBoxLayout(card); cl.setContentsMargins(24, 4, 24, 4); cl.setSpacing(0)
+            rws = []
+            for i, it in enumerate(SCHEMA[name]):
+                row = self.add_row(i, *it); rws.append(row); cl.addWidget(row)
+                self.index.append(dict(key=it[0], label=it[1], hint=it[5], page=page, section=name, row=row, adv=it[6]))
+            if name in GATES:
+                sw = self.ctl[GATES[name]]
+                def apply(on, rest=rws[1:]):
+                    for r in rest: r.setEnabled(bool(on))
+                sw.toggled.connect(apply); apply(sw.isChecked())
+            lay.addWidget(card)
+            if name == "AI picker": lay.addWidget(self.build_models_card())
+            if name == "YouTube": lay.addWidget(self.build_yt_card())
         lay.addStretch(1)
-        self.pages[name] = sc; self.stack.addWidget(sc)
+        self.pages[page] = sc; self.stack.addWidget(sc)
+
+    def build_search_page(self):
+        pg = QWidget(); v = QVBoxLayout(pg); v.setContentsMargins(0, 8, 0, 20); v.setSpacing(14)
+        t = QLabel("Search"); t.setObjectName("title")
+        self.search_sub = QLabel(""); self.search_sub.setObjectName("subtitle")
+        self.results = QListWidget(); self.results.itemClicked.connect(lambda it: self.go_to(it.data(Qt.UserRole)))
+        v.addWidget(t); v.addWidget(self.search_sub); v.addWidget(self.results, 1)
+        self.pages["Search"] = pg; self.stack.addWidget(pg)
+
+    def on_search(self, text):
+        words = text.lower().split()
+        if not words: self.show_page(self.cur_page); return
+        self.results.clear(); n = 0
+        for i, e in enumerate(self.index):
+            blob = f"{e['label']} {e['hint']} {e['section']} {e['page']} {e['key']}".lower()
+            if all(w in blob for w in words):
+                it = QListWidgetItem(f"{e['label']}\n{e['page']} › {e['section']}"); it.setData(Qt.UserRole, i); self.results.addItem(it); n += 1
+        self.search_sub.setText(f"{n} setting(s) match." if n else "Nothing matches. Try a shorter word.")
+        self.show_page("Search")
+
+    def search_first(self):
+        if self.results.count(): self.go_to(self.results.item(0).data(Qt.UserRole))
+
+    def go_to(self, i):
+        e = self.index[i]
+        if e["adv"] and not self.adv.isChecked(): self.adv.setChecked(True)  # the setting lives under Advanced options
+        self.show_page(e["page"])
+        row, sc = e["row"], self.pages[e["page"]]
+        def flash():
+            sc.ensureWidgetVisible(row, 0, 80)
+            row.setObjectName("hit"); row.setStyleSheet("QWidget#hit { background: #1f1f1f; border-radius: 8px; }")
+            QTimer.singleShot(1400, lambda: row.setStyleSheet(""))
+        QTimer.singleShot(60, flash)
 
     def add_row(self, idx, key, label, kind, default, opts, hint, adv):
         row = QWidget(); outer = QVBoxLayout(row); outer.setContentsMargins(0, 0, 0, 0); outer.setSpacing(0)
@@ -126,7 +190,7 @@ class MainWindow(Extras, QMainWindow):
     def make_control(self, key, kind, default, opts):
         g, s = self.get, self.set
         if kind == "bool":
-            w = Switch(bool(default)); g[key] = w.isChecked; s[key] = lambda v, w=w: w.setChecked(bool(v))
+            w = Switch(bool(default)); g[key] = w.isChecked; s[key] = lambda v, w=w: w.setChecked(bool(v)); self.ctl[key] = w
         elif kind == "choice":
             w = Combo(); w.addItems([str(o) for o in opts]); w.setCurrentText(str(default)); w.setMinimumWidth(220)
             g[key] = w.currentText; s[key] = w.setCurrentText
@@ -171,7 +235,9 @@ class MainWindow(Extras, QMainWindow):
             if adv: row.setVisible(self.adv.isChecked())
 
     def show_page(self, name):
-        self.stack.setCurrentWidget(self.pages[name]); self.nav[name].setChecked(True); self.page_shown(name)
+        self.stack.setCurrentWidget(self.pages[name])
+        if name in self.nav: self.nav[name].setChecked(True); self.cur_page = name
+        self.page_shown(name)
 
     def build_progress(self):
         pg = QWidget(); v = QVBoxLayout(pg); v.setContentsMargins(0, 8, 0, 20); v.setSpacing(18)
@@ -196,9 +262,9 @@ class MainWindow(Extras, QMainWindow):
         v.addWidget(self.logbox, 1)
         bt = QHBoxLayout(); bt.addStretch(1)
         self.yt_btn = QPushButton("Upload to YouTube"); self.yt_btn.clicked.connect(self.upload_button_clicked)
-        self.yt_stop = QPushButton("Stop upload"); self.yt_stop.setEnabled(False); self.yt_stop.clicked.connect(self.yt_stop_clicked)
+        self.yt_stop = QPushButton("Stop upload"); self.yt_stop.setEnabled(False); self.yt_stop.clicked.connect(self.yt_stop_clicked); self.yt_stop.hide()
         bt.addWidget(self.yt_btn); bt.addWidget(self.yt_stop)
-        for text, fn in (("Open output folder", lambda: self.open_path(self.last_out())), ("Clear cache", self.clear_cache), ("Reset settings", self.reset)):
+        for text, fn in (("Copy log", lambda: QApplication.clipboard().setText(self.logbox.toPlainText())), ("Open output folder", lambda: self.open_path(self.last_out())), ("Clear cache", self.clear_cache), ("Reset settings", self.reset)):
             b = QPushButton(text); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda _=False, fn=fn: fn()); bt.addWidget(b)
         v.addLayout(bt)
         self.pages["Progress"] = pg; self.stack.addWidget(pg)
@@ -242,6 +308,13 @@ class MainWindow(Extras, QMainWindow):
         p = QFileDialog.getOpenFileName(self, "Choose a video", "", "Video (*.mp4 *.mkv *.mov *.webm *.avi);;All files (*)")[0]
         if p: self.url.setText(p)
 
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls(): e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        for u in e.mimeData().urls():
+            self.url.setText(u.toLocalFile() if u.isLocalFile() else u.toString()); break
+
     def last_out(self): return Path(self.get["output_dir"]()).expanduser()
 
     def open_path(self, p):
@@ -255,6 +328,7 @@ class MainWindow(Extras, QMainWindow):
         subprocess.Popen([opener, str(p)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def clear_cache(self):
+        if self.running: QMessageBox.information(self, "Clipper", "Wait for the current job to finish first."); return
         cache = self.last_out() / ".cache"
         if cache.exists() and QMessageBox.question(self, "Clear cache", "Delete downloaded videos and transcripts? Finished clips are kept.") == QMessageBox.Yes:
             shutil.rmtree(cache, ignore_errors=True); self.on_log("Cache cleared.")
@@ -333,7 +407,7 @@ class MainWindow(Extras, QMainWindow):
     def close_dialog(self):
         w, self.review_window = getattr(self, "review_window", None), None
         if w is not None:
-            try: w.close()  # the pipeline is already cancelled; closing just tidies up
+            try: w.finish(None); w.close()  # the pipeline is already cancelled; closing just tidies up
             except RuntimeError: pass  # the dialog was already deleted
 
     def on_review_cancel(self): self.close_dialog()
@@ -348,6 +422,7 @@ class MainWindow(Extras, QMainWindow):
         for f in files: self.on_log("Saved " + (f["path"] if isinstance(f, dict) else str(f)))
         if files and self.get["open_done"](): self.open_path(out)
         if files and self.get["yt_enabled"]() and self.get["yt_auto_upload"](): self.upload_youtube(files)
+        QApplication.alert(self)
 
     def on_cancelled(self): self.finished("Cancelled."); self.eta.setText(""); self.on_log("Cancelled.")
 
