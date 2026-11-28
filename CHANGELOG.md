@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.0
+- Changed: new Qt interface (black theme, orange accent) replaces the Tkinter one
+- Removed: Tkinter dependency
+- Changed: Linux needs the xcb-cursor library (Arch: `xcb-util-cursor`)
+
 ## 2.1.0
 - Added: Drop down menu to select fonts which are installed on the system
 - Changed: Instead of black bars in face cam it is now blur

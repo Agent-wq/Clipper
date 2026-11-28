@@ -18,10 +18,12 @@ jobs:
         with:
           python-version: "3.11"
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y python3-tk
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0
       - run: pip install -r requirements-build.txt
       - run: pip install pytest
       - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q
       - name: Check tag matches VERSION
         if: startsWith(github.ref, 'refs/tags/v')
@@ -32,7 +34,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          pyinstaller --onefile --name Clipper run.py --noconfirm \
+          pyinstaller --onefile --name Clipper run.py --noconfirm --exclude-module tkinter\
             --collect-all faster_whisper --collect-all ctranslate2 --collect-all onnxruntime --collect-all av \
             --collect-all yt_dlp --collect-all yt_dlp_ejs --collect-all pip
       - name: Build windowed variant (no console window)

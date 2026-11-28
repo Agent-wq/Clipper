@@ -32,8 +32,13 @@ if any(a in sys.argv for a in ("--check", "--install", "--script", "--models")):
 def main():
     import multiprocessing
     multiprocessing.freeze_support()
-    from clipper.ui.app import App
-    App().mainloop()
+    try:
+        from clipper.qt.app import run
+    except ImportError as e:
+        if "PySide6" not in str(e) and "shiboken" not in str(e): raise
+        raise SystemExit(f"The window needs PySide6 ({e}).\nInstall it with:  python3 -m pip install --user PySide6-Essentials\n"
+                         "Or install everything at once:  python3 run.py --install")
+    sys.exit(run())
 
 if __name__ == "__main__":
     main()
