@@ -2,6 +2,7 @@
 
 ## 2.2.1
 -Fixed: Minor Fixes
+-Changes: further UI and UX improvements
 
 ## 2.2.0
 - Changed: new Qt interface (black theme, orange accent) replaces the Tkinter one
